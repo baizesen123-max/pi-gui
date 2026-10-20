@@ -13,16 +13,16 @@ interface BuiltinToolDefinition {
 
 /** Presentation for every built-in tool; a missing kind fails the build. */
 export const BUILTIN_TOOLS = {
-  files: { label: "Files", description: "Browse files in this checkout", Icon: FileIcon },
+  files: { label: "文件", description: "浏览当前工作目录的文件", Icon: FileIcon },
   changes: {
-    label: "Review",
-    description: "Review uncommitted, branch or turn changes",
+    label: "审查修改",
+    description: "审查未提交、分支或本轮修改",
     Icon: DiffIcon,
     shortcutKey: "R",
   },
   terminal: {
-    label: "Terminal",
-    description: "Run commands in this task's checkout",
+    label: "终端",
+    description: "在任务的工作目录中运行命令",
     Icon: TerminalIcon,
     shortcutKey: "J",
   },

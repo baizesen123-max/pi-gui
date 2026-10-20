@@ -7,8 +7,8 @@ export function extensionSourceSummary(extension: RuntimeExtensionRecord): strin
   return `${extensionScopeLabel(extension)} · ${extension.sourceInfo.origin}`;
 }
 
-export const PI_GUI_TOOLS_LABEL = "pi-gui tools";
-export const PI_ADDONS_LABEL = "Built into pi";
+export const PI_GUI_TOOLS_LABEL = "pi-gui 工具";
+export const PI_ADDONS_LABEL = "pi 内置";
 
 /** Extensions pi-gui itself adds to every session; switched on and off app-wide. */
 export function isPiGuiBuiltinExtension(extension: RuntimeExtensionRecord): boolean {
@@ -37,11 +37,11 @@ export function extensionScopeLabel(extension: RuntimeExtensionRecord): string {
 export function sourceScopeGroupLabel(scope: RuntimeSourceScope): string {
   switch (scope) {
     case "project":
-      return "Workspace";
+      return "工作区";
     case "user":
-      return "User";
+      return "用户";
     case "temporary":
-      return "This session";
+      return "当前会话";
   }
 }
 

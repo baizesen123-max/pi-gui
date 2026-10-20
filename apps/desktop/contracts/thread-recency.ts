@@ -8,10 +8,10 @@ export const RECENCY_BUCKET_ORDER = [
 ] as const satisfies readonly RecencyBucketId[];
 
 export const RECENCY_BUCKET_LABELS: Readonly<Record<RecencyBucketId, string>> = {
-  today: "Today",
-  "last-7-days": "Last 7 Days",
-  "last-30-days": "Last 30 Days",
-  older: "Older",
+  today: "今天",
+  "last-7-days": "最近 7 天",
+  "last-30-days": "最近 30 天",
+  older: "更早",
 };
 
 export function sessionLastInteractedAt(session: {

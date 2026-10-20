@@ -87,10 +87,10 @@ export function PinnedCards({
                 {canCollapse ? (
                   <button
                     aria-expanded={!collapsed}
-                    aria-label={`${collapsed ? "Expand" : "Collapse"} ${pin.card.title}`}
+                    aria-label={`${collapsed ? "展开" : "收起"} ${pin.card.title}`}
                     className="pinned-card__control icon-button"
                     data-testid="pinned-card-toggle"
-                    title={collapsed ? "Expand" : "Collapse"}
+                    title={collapsed ? "展开" : "收起"}
                     type="button"
                     onClick={() => onToggle(pin)}
                   >
@@ -98,10 +98,10 @@ export function PinnedCards({
                   </button>
                 ) : null}
                 <button
-                  aria-label={`Hide ${pin.card.title}`}
+                  aria-label={`隐藏 ${pin.card.title}`}
                   className="pinned-card__control icon-button"
                   data-testid="pinned-card-dismiss"
-                  title="Hide until it changes"
+                  title="隐藏，直到内容发生变化"
                   type="button"
                   onClick={(event) => focusComposerAfter(event.currentTarget, () => onDismiss(pin))}
                 >

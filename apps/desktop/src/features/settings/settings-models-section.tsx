@@ -77,9 +77,9 @@ export function SettingsModelsSection({
   return (
     <>
       <SettingsGroup>
-        <SettingsRow title="Default model" description="Used for new threads.">
+        <SettingsRow title="默认模型" description="用于新建对话。">
           <SettingsSelect
-            label="Default model"
+            label="默认模型"
             options={enabledModels.map((model) => ({
               value: `${model.providerId}:${model.modelId}`,
               label: `${model.providerName} · ${model.label}`,
@@ -91,9 +91,9 @@ export function SettingsModelsSection({
             }}
           />
         </SettingsRow>
-        <SettingsRow title="Reasoning" description="Default reasoning effort for new threads.">
+        <SettingsRow title="思考强度" description="新建对话的默认思考强度。">
           <SettingsSelect
-            label="Reasoning"
+            label="思考强度"
             options={THINKING_OPTIONS}
             value={runtime?.settings.defaultThinkingLevel ?? undefined}
             onChange={onSetThinkingLevel}
@@ -102,8 +102,8 @@ export function SettingsModelsSection({
         {defaultValue && !defaultIsEnabled ? (
           <div className="settings-row">
             <span className="settings-warning">
-              Your default model ({defaultProvider}/{defaultModelId}) is turned off or its provider
-              is not connected. Choose a new default.
+              默认模型（{defaultProvider}/{defaultModelId}
+              ）已禁用或服务尚未连接，请选择其他默认模型。
             </span>
           </div>
         ) : null}
@@ -112,16 +112,16 @@ export function SettingsModelsSection({
       <section className="settings-section">
         <div className="settings-section__header">
           <h3 className="settings-section__title">
-            Enabled models{" "}
+            已启用的模型{" "}
             <span className="resource-list__count">
-              {enabledModels.length} of {availableModels.length}
+              {enabledModels.length} / {availableModels.length}
             </span>
           </h3>
           <label className="resource-search">
             <SearchIcon />
             <input
-              aria-label="Search models"
-              placeholder="Search models"
+              aria-label="搜索模型"
+              placeholder="搜索模型"
               spellCheck={false}
               type="search"
               value={query}
@@ -129,16 +129,14 @@ export function SettingsModelsSection({
             />
           </label>
         </div>
-        <p className="settings-section__description">
-          Only enabled models appear in model pickers.
-        </p>
+        <p className="settings-section__description">模型列表只显示已启用的模型。</p>
         <div className="settings-group" data-testid="settings-model-list">
           {visibleAvailable.length === 0 ? (
             <div className="settings-row">
               <span className="settings-row__description">
                 {availableModels.length === 0
-                  ? "No connected models available yet. Connect a provider to add models."
-                  : `No connected models match “${query.trim()}”.`}
+                  ? "暂无已连接的模型，请先连接模型服务。"
+                  : `没有匹配的已连接模型：“${query.trim()}”.`}
               </span>
             </div>
           ) : (
@@ -156,7 +154,7 @@ export function SettingsModelsSection({
                   <SettingsSwitch
                     checked={enabled}
                     disabled={enabled && activePatterns.length <= 1}
-                    label={`Enable ${pattern}`}
+                    label={`启用 ${pattern}`}
                     onChange={(next) => setEnabled(pattern, next)}
                   />
                 </ModelRow>
@@ -170,16 +168,13 @@ export function SettingsModelsSection({
         <section className="settings-section">
           <div className="settings-section__header">
             <h3 className="settings-section__title">
-              Not connected{" "}
-              <span className="resource-list__count">{visibleUnconnected.length}</span>
+              未连接 <span className="resource-list__count">{visibleUnconnected.length}</span>
             </h3>
             <button className="button button--secondary" type="button" onClick={onOpenProviders}>
-              Connect a provider
+              连接模型服务
             </button>
           </div>
-          <p className="settings-section__description">
-            Models from providers you have not signed in to.
-          </p>
+          <p className="settings-section__description">来自尚未登录的模型服务。</p>
           {searching || showUnconnected ? (
             <div className="settings-group" data-testid="settings-unconnected-model-list">
               {visibleUnconnected.map((model) => (
@@ -192,7 +187,7 @@ export function SettingsModelsSection({
               type="button"
               onClick={() => setShowUnconnected(true)}
             >
-              Show {unconnectedModels.length} models
+              显示 {unconnectedModels.length} 个模型
             </button>
           )}
         </section>
@@ -215,12 +210,12 @@ function ModelRow({
       <div className="settings-row__label">
         <div className="settings-row__title">
           {model.label}
-          {isDefault ? <span className="model-row__badge">Default</span> : null}
+          {isDefault ? <span className="model-row__badge">默认</span> : null}
         </div>
         <div className="settings-row__description">
           {model.providerName} · {modelPattern(model)}
-          {model.reasoning ? <span className="model-row__tag">Reasoning</span> : null}
-          {model.supportsImages ? <span className="model-row__tag">Images</span> : null}
+          {model.reasoning ? <span className="model-row__tag">思考强度</span> : null}
+          {model.supportsImages ? <span className="model-row__tag">图片</span> : null}
         </div>
       </div>
       {children ? <div className="settings-row__control">{children}</div> : null}

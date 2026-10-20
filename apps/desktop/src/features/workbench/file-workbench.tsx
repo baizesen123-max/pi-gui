@@ -52,7 +52,7 @@ export function FileWorkbench({
             return;
           }
           console.error("[renderer] listWorkspaceFiles failed", error);
-          setListError("Couldn't load files");
+          setListError("无法加载文件");
         })
         .finally(() => {
           if (requestIdRef.current !== requestId) {

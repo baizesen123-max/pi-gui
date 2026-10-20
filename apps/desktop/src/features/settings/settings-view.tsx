@@ -119,9 +119,9 @@ export function SettingsView({
           <div className="settings-group">
             <div className="settings-row">
               <div className="settings-row__label">
-                <div className="settings-row__title">Select a workspace</div>
+                <div className="settings-row__title">选择工作区</div>
                 <div className="settings-row__description">
-                  Providers and models are set per workspace. Choose one, or open a folder first.
+                  模型服务和模型按工作区设置，请选择工作区或先打开文件夹。
                 </div>
               </div>
             </div>

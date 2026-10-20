@@ -163,7 +163,7 @@ function collectThreadEntries(state: DesktopAppState): ThreadListEntry[] {
         session,
         environment: {
           kind: "local" as const,
-          label: "Local",
+          label: "本地",
         },
         contextLabel: folder.name,
       })),

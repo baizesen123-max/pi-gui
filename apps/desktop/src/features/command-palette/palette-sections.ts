@@ -7,10 +7,10 @@ export type PaletteCandidate = Omit<PaletteItem, "titleMatches" | "detailMatches
 export type CommandFilter = "all" | "chats" | "workspaces" | "actions";
 
 export const COMMAND_FILTERS: readonly PaletteFilter<CommandFilter>[] = [
-  { id: "all", label: "All" },
-  { id: "chats", label: "Chats" },
-  { id: "workspaces", label: "Workspaces" },
-  { id: "actions", label: "Actions" },
+  { id: "all", label: "全部" },
+  { id: "chats", label: "对话" },
+  { id: "workspaces", label: "工作区" },
+  { id: "actions", label: "操作" },
 ];
 
 const RECENT_CHAT_COUNT = 5;
@@ -53,24 +53,24 @@ export function buildCommandSections(input: {
   if (query.trim() === "") {
     switch (filter) {
       case "chats":
-        return [{ id: "chats", label: "Chats", items: chats.slice(0, SINGLE_FILTER_LIMIT) }];
+        return [{ id: "chats", label: "对话", items: chats.slice(0, SINGLE_FILTER_LIMIT) }];
       case "workspaces":
-        return [{ id: "workspaces", label: "Workspaces", items: workspaces }];
+        return [{ id: "workspaces", label: "工作区", items: workspaces }];
       case "actions":
-        return [{ id: "actions", label: "Actions", items: actions }];
+        return [{ id: "actions", label: "操作", items: actions }];
       case "all":
         return [
-          { id: "recents", label: "Recents", items: chats.slice(0, RECENT_CHAT_COUNT) },
-          { id: "actions", label: "Actions", items: actions },
+          { id: "recents", label: "最近使用", items: chats.slice(0, RECENT_CHAT_COUNT) },
+          { id: "actions", label: "操作", items: actions },
         ];
     }
   }
 
   const single = filter !== "all";
   const kinds = [
-    { id: "chats", label: "Chats", candidates: chats },
-    { id: "workspaces", label: "Workspaces", candidates: workspaces },
-    { id: "actions", label: "Actions", candidates: actions },
+    { id: "chats", label: "对话", candidates: chats },
+    { id: "workspaces", label: "工作区", candidates: workspaces },
+    { id: "actions", label: "操作", candidates: actions },
   ] as const;
   return kinds
     .filter((kind) => !single || kind.id === filter)
@@ -110,7 +110,7 @@ export function buildFileSections(input: {
     return [
       {
         id: "open-files",
-        label: "Open files",
+        label: "已打开的文件",
         items: [...openTabs].reverse().map(toCandidate),
       },
     ];
@@ -126,7 +126,7 @@ export function buildFileSections(input: {
       detailMatches: match.positions.filter((position) => position < directory.length),
     };
   });
-  return [{ id: "files", label: "Files", items }];
+  return [{ id: "files", label: "文件", items }];
 }
 
 export function buildListSection(input: {

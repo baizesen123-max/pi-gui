@@ -89,8 +89,8 @@ export function SettingsMcpSection({ workspaceId, actions }: SettingsMcpSectionP
   return (
     <>
       <SettingsGroup
-        title="Servers"
-        description={`Shared with pi in the terminal: ${globalConfigPath}, plus this project's .pi/mcp.json.`}
+        title="服务列表"
+        description={`与终端中的 pi 共用：${globalConfigPath}，以及当前项目的 .pi/mcp.json。`}
       >
         {problems.map((problem) => (
           <div className="settings-row" key={problem}>
@@ -100,8 +100,8 @@ export function SettingsMcpSection({ workspaceId, actions }: SettingsMcpSectionP
         {snapshot && servers.length === 0 ? (
           <div className="settings-row" data-testid="mcp-servers-empty">
             <span className="settings-row__description">
-              No MCP servers yet. Servers come from {globalConfigPath}, which pi in the terminal
-              uses too. Connection status and sign-in show in threads: type /mcp.
+              尚无 MCP 服务。服务配置来自 {globalConfigPath}，终端中的 pi 也使用此配置。在对话中输入
+              /mcp，可查看连接状态并登录。
             </span>
           </div>
         ) : null}
@@ -128,15 +128,15 @@ export function SettingsMcpSection({ workspaceId, actions }: SettingsMcpSectionP
         onAdd={(server) => apply(() => actions.onAddServer(server))}
       />
 
-      <SettingsGroup title="Code mode">
+      <SettingsGroup title="代码模式">
         <SettingsRow
-          title="Always on"
-          description="Lets the model run scripts that call tools. Turning it on also applies to open threads; turning it off applies to new threads. Off, pi turns it on when an MCP server needs it."
+          title="始终开启"
+          description="允许模型通过脚本调用工具。开启后也适用于已打开的对话；关闭后仅影响新对话。未开启时，pi 会在 MCP 服务需要时自动启用。"
         >
           <SettingsSwitch
             checked={snapshot?.codemodeAlwaysOn ?? false}
             disabled={pending || !snapshot}
-            label="Code mode always on"
+            label="始终开启代码模式"
             onChange={(alwaysOn) => run(() => actions.onSetCodemodeAlwaysOn(alwaysOn))}
           />
         </SettingsRow>
@@ -168,7 +168,7 @@ function McpServerRow({
           <div className="settings-row__description">{server.description}</div>
         ) : null}
         <div className="settings-row__description">
-          {server.scope === "project" ? `This project · ${target}` : target}
+          {server.scope === "project" ? `当前项目 · ${target}` : target}
         </div>
       </div>
       <div className="settings-row__actions">
@@ -179,13 +179,13 @@ function McpServerRow({
             type="button"
             onClick={onRemove}
           >
-            Remove
+            移除
           </button>
         ) : null}
         <SettingsSwitch
           checked={server.enabled}
           disabled={disabled}
-          label={`Enable ${server.name}`}
+          label={`启用 ${server.name}`}
           onChange={onToggle}
         />
       </div>
@@ -195,9 +195,9 @@ function McpServerRow({
 
 /** Removing deletes the whole entry, including the settings the list never shows. */
 export function removeServerQuestion(server: McpServerRecord): string {
-  const question = `Remove MCP server "${server.name}"? pi in the terminal stops using it too.`;
+  const question = `移除 MCP 服务“${server.name}”？终端中的 pi 也将停用此服务。`;
   return server.hasHiddenSettings
-    ? `${question} Its hidden settings (environment variables, headers, sign-in config) are deleted too.`
+    ? `${question}其隐藏设置（环境变量、请求头和登录配置）也会一并删除。`
     : question;
 }
 
@@ -239,10 +239,10 @@ function AddMcpServerForm({
   };
 
   return (
-    <SettingsGroup title="Add server" description={`Saved to ${configPath}.`}>
-      <SettingsRow title="Name">
+    <SettingsGroup title="添加服务" description={`保存位置：${configPath}.`}>
+      <SettingsRow title="名称">
         <input
-          aria-label="Server name"
+          aria-label="服务名称"
           className="settings-text-input"
           disabled={disabled}
           placeholder="docs"
@@ -250,24 +250,21 @@ function AddMcpServerForm({
           onChange={(event) => setName(event.target.value)}
         />
       </SettingsRow>
-      <SettingsRow
-        title="What it does"
-        description="Optional. pi tells the model about the server with it."
-      >
+      <SettingsRow title="服务用途" description="可选，pi 会据此向模型介绍此服务。">
         <input
-          aria-label="Server description"
+          aria-label="服务说明"
           className="settings-text-input"
           disabled={disabled}
-          placeholder="Searches the team's docs"
+          placeholder="搜索团队文档"
           value={description}
           onChange={(event) => setDescription(event.target.value)}
         />
       </SettingsRow>
-      <SettingsRow title="Type">
+      <SettingsRow title="类型">
         <SettingsSegmented<ServerKind>
-          label="Server type"
+          label="服务类型"
           options={[
-            { value: "command", label: "Command" },
+            { value: "command", label: "命令" },
             { value: "url", label: "URL" },
           ]}
           value={kind}
@@ -276,9 +273,9 @@ function AddMcpServerForm({
       </SettingsRow>
       {kind === "command" ? (
         <>
-          <SettingsRow title="Command" description="Started on this machine for each thread.">
+          <SettingsRow title="命令" description="为每个对话在本机启动。">
             <input
-              aria-label="Server command"
+              aria-label="服务启动命令"
               className="settings-text-input"
               disabled={disabled}
               placeholder="npx"
@@ -286,12 +283,9 @@ function AddMcpServerForm({
               onChange={(event) => setCommand(event.target.value)}
             />
           </SettingsRow>
-          <SettingsRow
-            title="Arguments"
-            description="Separated by spaces; quote an argument that contains spaces."
-          >
+          <SettingsRow title="参数" description="参数以空格分隔；含空格的参数请用引号括起。">
             <input
-              aria-label="Server arguments"
+              aria-label="服务参数"
               className="settings-text-input"
               disabled={disabled}
               placeholder="-y @modelcontextprotocol/server-filesystem ."
@@ -303,10 +297,10 @@ function AddMcpServerForm({
       ) : (
         <SettingsRow
           title="URL"
-          description="A streamable HTTP server. If it needs a sign-in, type /mcp login in a thread."
+          description="支持流式 HTTP 的服务。如需登录，请在对话中输入 /mcp login。"
         >
           <input
-            aria-label="Server URL"
+            aria-label="服务地址"
             className="settings-text-input"
             disabled={disabled}
             placeholder="https://example.com/mcp"
@@ -317,7 +311,7 @@ function AddMcpServerForm({
       )}
       <div className="settings-row">
         <span className="settings-row__description">
-          Open threads reload to start it. Add env or headers in the file itself.
+          已打开的对话会重载以启动服务。环境变量和请求头请在配置文件中添加。
         </span>
         <div className="settings-row__control">
           <button
@@ -328,7 +322,7 @@ function AddMcpServerForm({
               submit().catch(() => undefined);
             }}
           >
-            Add server
+            添加服务
           </button>
         </div>
       </div>

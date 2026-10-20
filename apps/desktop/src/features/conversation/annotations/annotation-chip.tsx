@@ -29,7 +29,7 @@ export function AnnotationChip({
                 ) : null}
               </div>
               <button
-                aria-label={`Remove annotation ${index + 1}`}
+                aria-label={`移除批注 ${index + 1}`}
                 className="annotation-chip__remove"
                 type="button"
                 onClick={() => onRemove(annotation.id)}

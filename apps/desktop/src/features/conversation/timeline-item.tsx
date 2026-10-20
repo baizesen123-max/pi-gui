@@ -163,7 +163,7 @@ function TimelineMessage({
         <div className="timeline-item__user-stack">
           {scheduledOrigin ? (
             <div className="timeline-item__scheduled-origin" data-testid="sent-by-scheduled-task">
-              Sent by scheduled task
+              由定时任务发送
             </div>
           ) : null}
           <div className="timeline-item__bubble">
@@ -174,7 +174,7 @@ function TimelineMessage({
                     <ImageAttachmentThumb
                       className="timeline-item__attachment timeline-item__attachment--image"
                       key={`${item.id}:${index}`}
-                      name={attachment.name ?? `Attachment ${index + 1}`}
+                      name={attachment.name ?? `附件 ${index + 1}`}
                       src={`data:${attachment.mimeType};base64,${attachment.data}`}
                     />
                   ) : (
@@ -205,7 +205,7 @@ function TimelineMessage({
     return (
       <article className="timeline-item timeline-item--summary-card">
         <div className="timeline-item__summary-eyebrow">
-          {item.role === "branchSummary" ? "Branch summary" : "Compaction summary"}
+          {item.role === "branchSummary" ? "分支摘要" : "压缩摘要"}
         </div>
         <MessageMarkdown text={item.text} />
       </article>
@@ -228,18 +228,14 @@ function TimelineMessage({
           <button
             type="button"
             className="timeline-item__action"
-            title={
-              onForkFromMessage
-                ? "Fork conversation from this point"
-                : "Fork is available when the run finishes"
-            }
-            aria-label="Fork conversation from this point"
+            title={onForkFromMessage ? "从此处创建对话分支" : "运行结束后可创建分支"}
+            aria-label="从此处创建对话分支"
             data-testid="fork-from-message"
             disabled={!onForkFromMessage}
             onClick={() => onForkFromMessage?.(sourceMessageIndex, item.text)}
           >
             <ForkIcon />
-            <span className="timeline-item__action-label">Fork</span>
+            <span className="timeline-item__action-label">创建分支</span>
           </button>
         </div>
       ) : null}
@@ -326,7 +322,7 @@ function TimelineToolCallItem({
         </button>
         {filePath && onViewFileInDiff ? (
           <button
-            aria-label={`View ${filePath} in changes`}
+            aria-label={`查看 ${filePath} 的修改`}
             className="icon-button timeline-tool__view-in-diff"
             data-testid="timeline-tool-view-in-diff"
             type="button"
@@ -371,7 +367,7 @@ function TimelineToolCallItem({
                   className="icon-button timeline-tool__copy"
                   type="button"
                   onClick={handleCopy}
-                  aria-label="Copy"
+                  aria-label="复制"
                 >
                   <CopyIcon />
                 </button>
@@ -385,7 +381,7 @@ function TimelineToolCallItem({
                   className="icon-button timeline-tool__copy"
                   type="button"
                   onClick={handleCopy}
-                  aria-label="Copy"
+                  aria-label="复制"
                 >
                   <CopyIcon />
                 </button>
@@ -423,7 +419,7 @@ function buildCompactLabel(
   if (isWriteTool(item.toolName)) {
     const filename = extractFilename(item.input);
     if (filename) {
-      return `Edited ${shortenPath(filename)}`;
+      return `已编辑 ${shortenPath(filename)}`;
     }
   }
   return item.label;
@@ -474,15 +470,15 @@ function formatToolContent(input: unknown, output: unknown): string {
 }
 
 function statusLabel(status: "running" | "success" | "error") {
-  if (status === "running") return "running";
-  if (status === "success") return "done";
-  return "failed";
+  if (status === "running") return "运行中";
+  if (status === "success") return "完成";
+  return "失败";
 }
 
 function TimelineTurnMarkerItem({ item }: { readonly item: TimelineTurnMarker }) {
   return (
     <div className="timeline-turn-marker" data-testid="timeline-turn-marker">
-      <span className="timeline-turn-marker__label">{`Worked for ${formatWorkedDuration(item.durationMs)}`}</span>
+      <span className="timeline-turn-marker__label">{`用时 ${formatWorkedDuration(item.durationMs)}`}</span>
     </div>
   );
 }

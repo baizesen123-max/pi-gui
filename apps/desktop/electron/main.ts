@@ -366,9 +366,9 @@ function showMcpSignInUrl(url: string, reason: string): void {
   const options: MessageBoxOptions = {
     type: "warning",
     title: "pi-gui",
-    message: "Open this MCP sign-in link yourself",
-    detail: `${reason} Check the link before you open it:\n\n${url}`,
-    buttons: ["Copy link", "Close"],
+    message: "请手动打开此 MCP 登录链接",
+    detail: `${reason} 打开前请先确认链接：\n\n${url}`,
+    buttons: ["复制链接", "关闭"],
     defaultId: 0,
     cancelId: 1,
   };
@@ -721,11 +721,11 @@ async function pickWorkspacePathViaDialog(
   const result = window
     ? await dialog.showOpenDialog(window, {
         properties: ["openDirectory"],
-        title: "Open workspace folder",
+        title: "打开工作区文件夹",
       })
     : await dialog.showOpenDialog({
         properties: ["openDirectory"],
-        title: "Open workspace folder",
+        title: "打开工作区文件夹",
       });
   if (result.canceled || result.filePaths.length === 0) {
     return undefined;
@@ -774,9 +774,9 @@ async function runManualUpdateCheck(): Promise<void> {
       const choice = await showDialog({
         type: "info",
         title: "pi-gui",
-        message: `Version ${result.latestVersion} is available.`,
-        detail: `You have ${result.currentVersion}.`,
-        buttons: ["Download", "Later"],
+        message: `发现新版本 ${result.latestVersion}。`,
+        detail: `当前版本为 ${result.currentVersion}。`,
+        buttons: ["下载", "稍后"],
         defaultId: 0,
         cancelId: 1,
       });
@@ -790,8 +790,8 @@ async function runManualUpdateCheck(): Promise<void> {
       await showDialog({
         type: "info",
         title: "pi-gui",
-        message: `You're up to date on version ${result.currentVersion}.`,
-        buttons: ["OK"],
+        message: `当前已是最新版本 ${result.currentVersion}。`,
+        buttons: ["确定"],
       });
       return;
     }
@@ -799,18 +799,18 @@ async function runManualUpdateCheck(): Promise<void> {
     await showDialog({
       type: "warning",
       title: "pi-gui",
-      message: "Could not check for updates right now.",
+      message: "暂时无法检查更新。",
       detail: result.message,
-      buttons: ["OK"],
+      buttons: ["确定"],
     });
   } catch (error) {
     console.error("pi-gui: manual update check failed:", error);
     await showDialog({
       type: "warning",
       title: "pi-gui",
-      message: "Could not check for updates right now.",
+      message: "暂时无法检查更新。",
       detail: error instanceof Error ? error.message : String(error),
-      buttons: ["OK"],
+      buttons: ["确定"],
     }).catch(() => undefined);
   }
 }
@@ -824,11 +824,11 @@ function installApplicationMenu(): void {
     {
       label: app.name,
       submenu: [
-        { role: "about" },
+        { role: "about", label: "关于 pi-gui" },
         { type: "separator" },
         {
           id: CHECK_FOR_UPDATES_MENU_ITEM_ID,
-          label: "Check for Updates…",
+          label: "检查更新…",
           click: () => {
             void runManualUpdateCheck().catch((error: unknown) => {
               console.error("[main] runManualUpdateCheck failed", error);
@@ -836,20 +836,20 @@ function installApplicationMenu(): void {
           },
         },
         { type: "separator" },
-        { role: "services" },
+        { role: "services", label: "服务" },
         { type: "separator" },
-        { role: "hide" },
-        { role: "hideOthers" },
-        { role: "unhide" },
+        { role: "hide", label: "隐藏 pi-gui" },
+        { role: "hideOthers", label: "隐藏其他应用" },
+        { role: "unhide", label: "全部显示" },
         { type: "separator" },
-        { role: "quit" },
+        { role: "quit", label: "退出 pi-gui" },
       ],
     },
     {
-      label: "File",
+      label: "文件",
       submenu: [
         {
-          label: "New Thread",
+          label: "新建对话",
           accelerator: "CommandOrControl+N",
           click: () => {
             const window = BrowserWindow.getFocusedWindow() ?? mainWindow;
@@ -858,7 +858,7 @@ function installApplicationMenu(): void {
         },
         {
           id: NEW_WINDOW_MENU_ITEM_ID,
-          label: "New Window",
+          label: "新建窗口",
           accelerator: "CommandOrControl+Shift+N",
           click: () => {
             createAppWindow(windowOwner.foregroundView());
@@ -867,7 +867,7 @@ function installApplicationMenu(): void {
         { type: "separator" },
         {
           id: OPEN_FOLDER_MENU_ITEM_ID,
-          label: "Open Folder…",
+          label: "打开文件夹…",
           accelerator: "Command+O",
           click: () => {
             void pickWorkspaceViaDialog(mainWindow).catch((error: unknown) => {
@@ -876,36 +876,61 @@ function installApplicationMenu(): void {
           },
         },
         { type: "separator" },
-        { role: "close" },
+        { role: "close", label: "关闭窗口" },
       ],
     },
-    { role: "editMenu" },
+    { role: "editMenu", label: "编辑" },
     {
-      label: "View",
+      label: "视图",
       submenu: [
         // Cmd+R toggles Review and Shift+Cmd+R renames the thread, so neither
         // reload has a shortcut.
         {
-          label: "Reload",
+          label: "重新加载",
           click: () => BrowserWindow.getFocusedWindow()?.webContents.reload(),
         },
         {
-          label: "Force Reload",
+          label: "强制重新加载",
           click: () => BrowserWindow.getFocusedWindow()?.webContents.reloadIgnoringCache(),
         },
-        { role: "toggleDevTools" },
+        { role: "toggleDevTools", label: "开发者工具" },
         { type: "separator" },
-        { role: "resetZoom" },
-        { role: "zoomIn" },
-        { role: "zoomOut" },
+        { role: "resetZoom", label: "实际大小" },
+        { role: "zoomIn", label: "放大" },
+        { role: "zoomOut", label: "缩小" },
         { type: "separator" },
-        { role: "togglefullscreen" },
+        { role: "togglefullscreen", label: "切换全屏" },
       ],
     },
-    { role: "windowMenu" },
+    { role: "windowMenu", label: "窗口" },
   ];
 
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  const menu = Menu.buildFromTemplate(template);
+  const roleLabels: Readonly<Record<string, string>> = {
+    undo: "撤销",
+    redo: "重做",
+    cut: "剪切",
+    copy: "复制",
+    paste: "粘贴",
+    pasteAndMatchStyle: "粘贴并匹配样式",
+    delete: "删除",
+    selectAll: "全选",
+    startSpeaking: "开始朗读",
+    stopSpeaking: "停止朗读",
+    minimize: "最小化",
+    zoom: "缩放",
+    front: "全部置于前台",
+    close: "关闭窗口",
+  };
+  const localizeNativeItems = (current: Menu): void => {
+    for (const item of current.items) {
+      const label = item.role ? roleLabels[item.role] : undefined;
+      if (label) item.label = label;
+      if (item.submenu) localizeNativeItems(item.submenu);
+    }
+  };
+  localizeNativeItems(menu);
+  Menu.setApplicationMenu(menu);
 }
 
 // Ensure npm (and other Homebrew/npm-global binaries) are available even when
@@ -1204,11 +1229,11 @@ app
           const result = parent
             ? await dialog.showOpenDialog(parent, {
                 properties: ["openFile", "multiSelections"],
-                title: "Attach files",
+                title: "添加附件",
               })
             : await dialog.showOpenDialog({
                 properties: ["openFile", "multiSelections"],
-                title: "Attach files",
+                title: "添加附件",
               });
           if (result.canceled || result.filePaths.length === 0) {
             return undefined;
@@ -1540,7 +1565,7 @@ async function promptForText(
 }
 
 function promptDataUrl(message: string, placeholder: string): string {
-  const html = `<!doctype html><html><head><meta charset="utf-8" />
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8" />
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -1560,8 +1585,8 @@ function promptDataUrl(message: string, placeholder: string): string {
   <div class="msg">${escapeHtml(message)}</div>
   <input id="pi-prompt-input" type="text" placeholder="${escapeHtml(placeholder)}" autofocus />
   <div class="row">
-    <button id="pi-prompt-cancel" type="button">Cancel</button>
-    <button id="pi-prompt-ok" type="button">OK</button>
+    <button id="pi-prompt-cancel" type="button">取消</button>
+    <button id="pi-prompt-ok" type="button">确定</button>
   </div>
   <script>
     (function () {

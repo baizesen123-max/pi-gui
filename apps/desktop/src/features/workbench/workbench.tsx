@@ -129,14 +129,14 @@ export function Workbench({
 
   return (
     <aside
-      aria-label="Side workspace"
+      aria-label="侧面板工作区"
       className="workbench side-panel"
       data-testid="workbench"
       id="task-workbench"
     >
       <WorkbenchResizeHandle onResize={onResize} />
       <div className="workbench__tabbar">
-        <div aria-label="Workspace tools" className="workbench__tabs" role="tablist">
+        <div aria-label="工作区工具" className="workbench__tabs" role="tablist">
           {view.tools.map((tool, index) => {
             const toolId = toolRefId(tool);
             const label =
@@ -183,12 +183,12 @@ export function Workbench({
                   <span>{label}</span>
                 </button>
                 <button
-                  aria-label={`Close ${label} tab`}
+                  aria-label={`关闭 ${label} tab`}
                   className="workbench__tab-close icon-button"
                   disabled={loading}
                   onClick={() => closeAndFocus(toolId)}
                   tabIndex={-1}
-                  title={`Close ${label} tab`}
+                  title={`关闭 ${label} tab`}
                   type="button"
                 >
                   <CloseIcon />
@@ -198,25 +198,25 @@ export function Workbench({
           })}
         </div>
         <button
-          aria-label="Add tab"
+          aria-label="添加标签"
           className="workbench__add icon-button"
           data-testid="workbench-add-tab"
           disabled={loading}
           onClick={onShowChooser}
           ref={addRef}
-          title="Add tab"
+          title="添加标签"
           type="button"
         >
           <PlusIcon />
         </button>
         <button
-          aria-label="Toggle side panel"
+          aria-label="显示或隐藏侧面板"
           aria-pressed="true"
           aria-controls="task-workbench"
           data-testid="toggle-side-panel"
           className="workbench__add icon-button"
           onClick={onTogglePanel}
-          title="Hide side panel"
+          title="隐藏侧面板"
           type="button"
         >
           <SidePanelIcon />
@@ -227,7 +227,7 @@ export function Workbench({
           <p>{error}</p>
           {loading && onRetryRestore ? (
             <button className="button" onClick={onRetryRestore} type="button">
-              Retry restoring tabs
+              重试恢复标签
             </button>
           ) : null}
         </div>
@@ -240,14 +240,12 @@ export function Workbench({
       >
         {loading ? (
           <p className="workbench__loading" role="status">
-            {error
-              ? "Saved tabs are unavailable until restoration succeeds."
-              : "Restoring tool tabs…"}
+            {error ? "恢复成功后，才可使用已保存的标签。" : "正在恢复工具标签…"}
           </p>
         ) : view.selection.kind === "chooser" ? (
           <div className="workbench__chooser" data-testid="workbench-chooser">
-            <h2>Open a tool</h2>
-            <p>Keep the tools you need alongside your conversation.</p>
+            <h2>打开工具</h2>
+            <p>在对话旁打开所需工具。</p>
             {BUILTIN_TOOL_ENTRIES.map(({ kind, label, description, Icon, shortcutKey }) => (
               <button
                 aria-keyshortcuts={
@@ -275,14 +273,14 @@ export function Workbench({
                 ) : null}
               </button>
             ))}
-            <h3 className="workbench__extension-heading">Extension views</h3>
-            {extensionViewsLoading ? <p role="status">Loading extension views…</p> : null}
+            <h3 className="workbench__extension-heading">扩展视图</h3>
+            {extensionViewsLoading ? <p role="status">正在加载扩展视图…</p> : null}
             {extensionViewsError ? (
               <div role="status">
                 <p>{extensionViewsError}</p>
                 {onReloadExtensionViews ? (
                   <button className="button" type="button" onClick={onReloadExtensionViews}>
-                    Refresh views
+                    刷新视图
                   </button>
                 ) : null}
               </div>
@@ -317,17 +315,13 @@ export function Workbench({
               </button>
             ))}
             {!extensionViewsLoading && !extensionViewsError && extensionViews.length === 0 ? (
-              <p>Installed extensions can provide additional views here.</p>
+              <p>安装的扩展可以在这里提供更多视图。</p>
             ) : null}
           </div>
         ) : activeTool?.kind === "extension" && activeExtension?.state !== "ready" ? (
           <div className="workbench__unavailable" role="status">
             <ExtensionIcon />
-            <h2>
-              {extensionViewsLoading
-                ? "Finding this extension view…"
-                : "This extension view is unavailable"}
-            </h2>
+            <h2>{extensionViewsLoading ? "正在查找扩展视图…" : "此扩展视图不可用"}</h2>
             <p>
               {activeExtension?.error ||
                 extensionViewsError ||
@@ -335,7 +329,7 @@ export function Workbench({
             </p>
             {!extensionViewsLoading && onReloadExtensionViews ? (
               <button className="button" type="button" onClick={onReloadExtensionViews}>
-                Refresh views
+                刷新视图
               </button>
             ) : null}
             <button
@@ -343,7 +337,7 @@ export function Workbench({
               onClick={() => closeAndFocus(toolRefId(activeTool))}
               type="button"
             >
-              Close tab
+              关闭标签
             </button>
           </div>
         ) : (

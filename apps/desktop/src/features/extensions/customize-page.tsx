@@ -32,8 +32,7 @@ interface CustomizePageProps {
   readonly onOpenExtensionFolder: (path: string) => void;
 }
 
-const NEW_SKILL_PROMPT =
-  "Create a new skill for this workspace and explain which files you will add.";
+const NEW_SKILL_PROMPT = "为当前工作区新建一个技能，并说明将添加哪些文件。";
 
 /** Codex's Plugins page: tabs with counts over one searchable, grouped list per tab. */
 export function CustomizePage({
@@ -102,18 +101,17 @@ export function CustomizePage({
       <div className="conversation settings-view">
         <header className="view-header">
           <div>
-            <h1 className="view-header__title">Skills and extensions</h1>
+            <h1 className="view-header__title">技能与扩展</h1>
             <p className="view-header__body">
-              Reusable workflows and runtime add-ons pi loads for{" "}
-              {workspace?.name ?? "this workspace"}.
+              pi 为以下工作区加载的工作流程和扩展： {workspace?.name ?? "this workspace"}.
             </p>
           </div>
           <div className="view-header__actions">
             {workspacePicker}
             <button
-              aria-label="Refresh"
+              aria-label="刷新"
               className="icon-button resource-refresh"
-              title="Refresh"
+              title="刷新"
               type="button"
               onClick={onRefresh}
             >
@@ -125,7 +123,7 @@ export function CustomizePage({
                 type="button"
                 onClick={() => onTryCommand(NEW_SKILL_PROMPT)}
               >
-                New skill
+                新建技能
               </button>
             ) : null}
           </div>
@@ -133,21 +131,21 @@ export function CustomizePage({
 
         <div className="resource-toolbar">
           <div
-            aria-label="Skills and extensions"
+            aria-label="技能与扩展"
             className="resource-tabs"
             role="tablist"
             onKeyDown={handleTabKeyDown}
           >
             <ResourceTab
               count={skills.length}
-              label="Skills"
+              label="技能"
               selected={tab === "skills"}
               tab="skills"
               onSelect={() => onSelectTab("skills")}
             />
             <ResourceTab
               count={extensions.length}
-              label="Extensions"
+              label="扩展"
               selected={tab === "extensions"}
               tab="extensions"
               onSelect={() => onSelectTab("extensions")}
@@ -156,8 +154,8 @@ export function CustomizePage({
           <label className="resource-search">
             <SearchIcon />
             <input
-              aria-label={`Search ${tab}`}
-              placeholder={`Search ${tab}`}
+              aria-label={`搜索 ${tab}`}
+              placeholder={`搜索 ${tab}`}
               spellCheck={false}
               type="search"
               value={query}
@@ -178,10 +176,8 @@ export function CustomizePage({
         >
           {!workspace ? (
             <div className="settings-group resource-empty">
-              <div className="resource-empty__title">Open a folder first</div>
-              <p className="resource-empty__body">
-                Skills and extensions are discovered per workspace, plus your user folders.
-              </p>
+              <div className="resource-empty__title">请先打开文件夹</div>
+              <p className="resource-empty__body">从当前工作区和用户目录中查找技能与扩展。</p>
             </div>
           ) : tab === "skills" ? (
             <SkillsTab

@@ -314,13 +314,11 @@ export function TreeModal({
       >
         <div className="tree-modal__header">
           <div>
-            <div className="tree-modal__eyebrow">Session tree</div>
-            <h2 className="tree-modal__title">
-              {step === "summary" ? "Switch branch" : "Browse branches"}
-            </h2>
+            <div className="tree-modal__eyebrow">会话树</div>
+            <h2 className="tree-modal__title">{step === "summary" ? "切换分支" : "浏览分支"}</h2>
           </div>
           <button
-            aria-label="Close tree modal"
+            aria-label="关闭会话树"
             className="tree-modal__close"
             disabled={submitting}
             type="button"
@@ -344,7 +342,7 @@ export function TreeModal({
 
         {loading ? (
           <div className="tree-modal__loading" data-testid="tree-modal-loading">
-            Loading session tree…
+            正在加载会话树…
           </div>
         ) : null}
 
@@ -353,10 +351,10 @@ export function TreeModal({
             <div className="tree-modal__search-row">
               <input
                 autoFocus
-                aria-label="Search session tree"
+                aria-label="搜索会话树"
                 className="tree-modal__search"
                 data-testid="tree-modal-search"
-                placeholder="Search visible tree entries"
+                placeholder="搜索可见的会话节点"
                 ref={searchRef}
                 value={search}
                 onChange={(event) => {
@@ -366,16 +364,16 @@ export function TreeModal({
               />
               <div className="tree-modal__meta">
                 {searching
-                  ? "Search expands matching branches."
+                  ? "搜索会展开匹配的分支。"
                   : currentLeafId
-                    ? "Tree opens at the most recent entries."
-                    : "Select a node to branch from it."}
+                    ? "默认显示最近的会话节点。"
+                    : "选择节点，从该位置继续。"}
               </div>
             </div>
 
             <div className="tree-modal__list" data-testid="tree-modal-list" ref={setListElement}>
               {displayRows.length === 0 ? (
-                <div className="tree-modal__empty">No matching nodes.</div>
+                <div className="tree-modal__empty">没有匹配的节点。</div>
               ) : (
                 displayRows.map((row) => {
                   const isSelected = row.node.id === selectedId;
@@ -386,7 +384,7 @@ export function TreeModal({
                       key={row.node.id}
                     >
                       <button
-                        aria-label={row.expanded ? "Collapse branch" : "Expand branch"}
+                        aria-label={row.expanded ? "收起分支" : "展开分支"}
                         className={`tree-row__toggle ${row.hasChildren ? "" : "tree-row__toggle--hidden"}`}
                         disabled={searching || !row.hasChildren}
                         tabIndex={-1}
@@ -431,12 +429,11 @@ export function TreeModal({
 
             <div className="tree-modal__footer">
               <div className="tree-modal__hint">
-                Selecting a user prompt reopens it in the composer. Selecting any other node jumps
-                directly there.
+                选择用户消息会在输入框中重新打开它；选择其他节点会直接跳转。
               </div>
               <div className="tree-modal__actions">
                 <button className="button button--secondary" type="button" onClick={onClose}>
-                  Cancel
+                  取消
                 </button>
                 <button
                   className="button button--primary"
@@ -444,7 +441,7 @@ export function TreeModal({
                   type="button"
                   onClick={() => setStep("summary")}
                 >
-                  {currentLeafSelected ? "Already here" : "Continue"}
+                  {currentLeafSelected ? "当前位置" : "继续"}
                 </button>
               </div>
             </div>
@@ -454,8 +451,7 @@ export function TreeModal({
         {!loading && tree && step === "summary" ? (
           <div className="tree-modal__summary-step" data-testid="tree-summary-step">
             <div className="tree-modal__summary-copy">
-              You&apos;re leaving the current branch. Choose whether pi should summarize the
-              abandoned path before switching.
+              即将离开当前分支，请选择是否在切换前生成摘要。
             </div>
             <div className="tree-summary-options">
               <button
@@ -463,39 +459,33 @@ export function TreeModal({
                 type="button"
                 onClick={() => setSummaryMode("none")}
               >
-                <span className="tree-summary-option__title">No summary</span>
-                <span className="tree-summary-option__description">
-                  Jump immediately with no branch summary.
-                </span>
+                <span className="tree-summary-option__title">不生成摘要</span>
+                <span className="tree-summary-option__description">直接跳转，不生成分支摘要。</span>
               </button>
               <button
                 className={`tree-summary-option ${summaryMode === "summary" ? "tree-summary-option--selected" : ""}`}
                 type="button"
                 onClick={() => setSummaryMode("summary")}
               >
-                <span className="tree-summary-option__title">Summarize</span>
-                <span className="tree-summary-option__description">
-                  Generate a branch summary before switching.
-                </span>
+                <span className="tree-summary-option__title">生成摘要</span>
+                <span className="tree-summary-option__description">切换前生成分支摘要。</span>
               </button>
               <button
                 className={`tree-summary-option ${summaryMode === "custom" ? "tree-summary-option--selected" : ""}`}
                 type="button"
                 onClick={() => setSummaryMode("custom")}
               >
-                <span className="tree-summary-option__title">Summarize with custom prompt</span>
-                <span className="tree-summary-option__description">
-                  Provide extra instructions for the summary.
-                </span>
+                <span className="tree-summary-option__title">按自定义要求生成摘要</span>
+                <span className="tree-summary-option__description">补充摘要要求。</span>
               </button>
             </div>
 
             {summaryMode === "custom" ? (
               <textarea
                 autoFocus
-                aria-label="Custom summary instructions"
+                aria-label="自定义摘要要求"
                 className="tree-modal__custom-instructions"
-                placeholder="Focus the summary on decisions, changed files, and unresolved risks."
+                placeholder="重点记录决策、修改的文件和未解决的风险。"
                 ref={customInstructionsRef}
                 value={customInstructions}
                 onChange={(event) => setCustomInstructions(event.target.value)}
@@ -505,10 +495,10 @@ export function TreeModal({
             <div className="tree-modal__footer">
               <div className="tree-modal__hint">
                 {submitting
-                  ? "Switching branches…"
+                  ? "正在切换分支…"
                   : summaryMode === "none"
-                    ? "The current branch will be left as-is."
-                    : "The summary will be attached to the branch you switch to."}
+                    ? "当前分支保持不变。"
+                    : "摘要将附加到目标分支。"}
               </div>
               <div className="tree-modal__actions">
                 <button
@@ -517,7 +507,7 @@ export function TreeModal({
                   type="button"
                   onClick={() => setStep("select")}
                 >
-                  Back
+                  返回
                 </button>
                 <button
                   className="button button--primary"
@@ -530,7 +520,7 @@ export function TreeModal({
                   type="button"
                   onClick={handleSubmit}
                 >
-                  {submitting ? "Switching…" : "Switch branch"}
+                  {submitting ? "正在切换…" : "切换分支"}
                 </button>
               </div>
             </div>
@@ -733,7 +723,7 @@ function buildTreeRowLine(row: TreeRow, currentLeafId: string | null): string {
   const prefix = buildTreePrefix(row);
   const pathMarker = row.node.id === currentLeafId ? "• " : row.isOnActivePath ? "· " : "  ";
   const label = row.node.label ? `[${row.node.label}] ` : "";
-  const current = row.node.id === currentLeafId ? "  ← current" : "";
+  const current = row.node.id === currentLeafId ? "  ← 当前" : "";
   return `${prefix}${pathMarker}${label}${formatTreeNodeDisplayText(row.node)}${current}`;
 }
 

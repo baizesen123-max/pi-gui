@@ -61,11 +61,11 @@ export function ForkModal({
       >
         <div className="tree-modal__header">
           <div>
-            <div className="tree-modal__eyebrow">Fork conversation</div>
-            <h2 className="tree-modal__title">Start a new thread</h2>
+            <div className="tree-modal__eyebrow">创建对话分支</div>
+            <h2 className="tree-modal__title">新建对话</h2>
           </div>
           <button
-            aria-label="Close fork modal"
+            aria-label="关闭分支窗口"
             className="tree-modal__close"
             disabled={submitting}
             type="button"
@@ -83,9 +83,7 @@ export function ForkModal({
 
         <div className="tree-modal__summary-step">
           <div className="tree-modal__summary-copy">
-            Forks the conversation up to and including this response into a new sidebar thread with
-            an empty composer, so you can continue it in a different direction. The original thread
-            stays untouched.
+            将截至此回复的内容复制到一个新对话，方便继续探索其他方向。原对话保持不变。
           </div>
 
           {messagePreview ? (
@@ -97,7 +95,7 @@ export function ForkModal({
           <div
             className="new-thread__environment-group"
             role="radiogroup"
-            aria-label="Fork environment"
+            aria-label="分支运行环境"
           >
             <button
               aria-pressed={environment === "local"}
@@ -106,26 +104,26 @@ export function ForkModal({
               type="button"
               onClick={() => setEnvironment("local")}
             >
-              <span>Same worktree</span>
+              <span>当前工作树</span>
             </button>
             <button
               aria-pressed={environment === "worktree"}
               className={`new-thread__environment ${environment === "worktree" ? "new-thread__environment--active" : ""}`}
               data-testid="fork-environment-worktree"
               disabled={!canUseWorktree}
-              title={canUseWorktree ? undefined : "This workspace can't create worktrees."}
+              title={canUseWorktree ? undefined : "此工作区无法创建工作树。"}
               type="button"
               onClick={() => setEnvironment("worktree")}
             >
-              <span>New worktree</span>
+              <span>新建工作树</span>
             </button>
           </div>
 
           <div className="tree-modal__footer">
             <div className="tree-modal__hint">
               {environment === "worktree"
-                ? "A fresh worktree is created and the forked thread opens there."
-                : "The forked thread opens in the same folder as the original."}
+                ? "创建独立工作树，并在其中打开新对话。"
+                : "在原对话所在的文件夹中打开新对话。"}
             </div>
             <div className="tree-modal__actions">
               <button
@@ -134,7 +132,7 @@ export function ForkModal({
                 type="button"
                 onClick={onClose}
               >
-                Cancel
+                取消
               </button>
               <button
                 className="button button--primary"
@@ -144,7 +142,7 @@ export function ForkModal({
                 type="button"
                 onClick={() => onSubmit(environment)}
               >
-                {submitting ? "Forking…" : "Fork thread"}
+                {submitting ? "正在创建分支…" : "创建分支"}
               </button>
             </div>
           </div>

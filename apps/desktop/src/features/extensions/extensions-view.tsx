@@ -15,7 +15,7 @@ import {
 import { displayPath, ResourceDetail } from "./resource-detail";
 import { ResourceEmptyState, ResourceList, type ResourceListGroup } from "./resource-list";
 
-const GROUP_ORDER = ["Workspace", "User", "This session", PI_ADDONS_LABEL, PI_GUI_TOOLS_LABEL];
+const GROUP_ORDER = ["工作区", "用户", "当前会话", PI_ADDONS_LABEL, PI_GUI_TOOLS_LABEL];
 
 interface ExtensionsTabProps {
   readonly workspace: WorkspaceRecord;
@@ -43,11 +43,11 @@ export function ExtensionsTab({
   const list =
     extensions.length === 0 ? (
       <ResourceEmptyState
-        title={searching ? "No extensions match" : "No extensions yet"}
+        title={searching ? "没有匹配的扩展" : "暂无扩展"}
         body={
           searching
-            ? "Try another name, command or tool."
-            : "Extensions are discovered in this workspace and your user extension folders. Refresh after adding one."
+            ? "请尝试其他名称、命令或工具。"
+            : "从工作区和用户扩展目录中查找扩展，添加后请刷新。"
         }
       />
     ) : (
@@ -100,11 +100,11 @@ function ExtensionDetail({
             type="button"
             onClick={() => onOpenExtensionFolder(selected.path)}
           >
-            Open folder
+            打开文件夹
           </button>
         ) : null
       }
-      backLabel="All extensions"
+      backLabel="全部扩展"
       enabled={selected.enabled}
       icon={<ExtensionIcon />}
       subtitle={selected.sourceInfo.source}
@@ -121,34 +121,34 @@ function ExtensionDetail({
       ) : null}
       <SettingsGroup>
         <SettingsRow
-          title="Source"
+          title="来源"
           description={
             isPiAddonExtension(selected)
-              ? "Ships with pi; this switch also applies to pi in the terminal"
+              ? "随 pi 提供；此开关也适用于终端中的 pi"
               : selected.sourceInfo.origin === "package"
-                ? "Installed as a package"
-                : "Loaded from a file"
+                ? "以软件包方式安装"
+                : "从文件加载"
           }
         >
           <span className="settings-row__value">{extensionGroupLabel(selected)}</span>
         </SettingsRow>
         {isPiGuiBuiltinExtension(selected) || isPiAddonExtension(selected) ? null : (
-          <SettingsRow title="Location">
+          <SettingsRow title="位置">
             <code className="resource-detail__code" title={selected.path}>
               {displayPath(selected.path, workspace.path)}
             </code>
           </SettingsRow>
         )}
       </SettingsGroup>
-      <ExtensionContributionSection title="Tools" items={selected.tools.map((tool) => tool.name)} />
+      <ExtensionContributionSection title="工具" items={selected.tools.map((tool) => tool.name)} />
       {selected.commands.length > 0 ? (
         <ExtensionCompatibilitySection
           commands={selected.commands}
           compatibilityRecords={compatibilityRecords}
         />
       ) : null}
-      <ExtensionContributionSection title="Flags" items={selected.flags} />
-      <ExtensionContributionSection title="Shortcuts" items={selected.shortcuts} />
+      <ExtensionContributionSection title="参数" items={selected.flags} />
+      <ExtensionContributionSection title="快捷键" items={selected.shortcuts} />
       <ExtensionDiagnostics diagnostics={selected.diagnostics} />
     </ResourceDetail>
   );
@@ -232,7 +232,7 @@ function ExtensionDiagnostics({
 }) {
   if (diagnostics.length === 0) return null;
   return (
-    <SettingsGroup title="Diagnostics">
+    <SettingsGroup title="诊断信息">
       {diagnostics.map((diagnostic, index) => (
         <div
           className={`activity-item activity-item--${diagnostic.type === "error" ? "error" : "info"}`}
@@ -263,14 +263,11 @@ function ExtensionCompatibilitySection({
   );
 
   return (
-    <SettingsGroup
-      title="Commands"
-      description="Whether each command works in the app is learned the first time it runs here."
-    >
+    <SettingsGroup title="命令" description="命令首次运行后，会记录是否兼容当前应用。">
       <div className="resource-detail__tokens">
         {supported.map((record) => (
           <code className="resource-detail__token" key={`supported:${record.commandName}`}>
-            {record.commandName} · GUI-compatible
+            {record.commandName} · 支持图形界面
           </code>
         ))}
         {terminalOnly.map((record) => (
@@ -278,12 +275,12 @@ function ExtensionCompatibilitySection({
             className="resource-detail__token resource-detail__token--warning"
             key={`terminal:${record.commandName}`}
           >
-            {record.commandName} · Terminal-only
+            {record.commandName} · 仅限终端
           </code>
         ))}
         {unknown.map((commandName) => (
           <code className="resource-detail__token" key={`unknown:${commandName}`}>
-            {commandName} · Unknown
+            {commandName} · 尚未确认
           </code>
         ))}
       </div>

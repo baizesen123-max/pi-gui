@@ -22,7 +22,7 @@ function setFlagEntries(values: ExtensionFlagValues | undefined): [string, true 
 }
 
 function flagsBadgeLabel(count: number): string {
-  return count > 0 ? `Flags · ${count}` : "Flags";
+  return count > 0 ? `启动参数 · ${count}` : "参数";
 }
 
 /**
@@ -139,7 +139,7 @@ export function ExtensionFlagsBadge({
     <span
       className="model-selector__badge extension-flags__badge--readonly"
       data-testid="extension-flags-session-badge"
-      title={`Started with:\n${summary}`}
+      title={`启动时的参数：\n${summary}`}
     >
       {flagsBadgeLabel(entries.length)}
     </span>

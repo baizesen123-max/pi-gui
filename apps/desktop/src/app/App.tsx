@@ -1029,7 +1029,7 @@ export default function App() {
                 <button
                   aria-haspopup="menu"
                   aria-expanded={threadMenu.openMenu?.surface === "header"}
-                  aria-label="Thread actions"
+                  aria-label="对话操作"
                   className="icon-button"
                   data-testid="thread-header-menu"
                   type="button"
@@ -1050,7 +1050,7 @@ export default function App() {
 
         {snapshot.startupDiagnostics.length > 0 ? (
           <div className="startup-diagnostics" role="status" data-testid="startup-diagnostics">
-            <strong>Some saved workspaces could not be refreshed.</strong>
+            <strong>部分已保存的工作区未能刷新。</strong>
             <span>
               {snapshot.startupDiagnostics
                 .map((diagnostic) => {
@@ -1136,9 +1136,9 @@ export default function App() {
             ) : (
               <section className="canvas canvas--empty">
                 <div className="empty-panel">
-                  <div className="session-header__eyebrow">Workspace</div>
-                  <h1>Open a folder to start</h1>
-                  <p>Add a project folder before creating a new thread.</p>
+                  <div className="session-header__eyebrow">工作区</div>
+                  <h1>打开文件夹，开始使用</h1>
+                  <p>请先添加项目文件夹，再新建对话。</p>
                 </div>
               </section>
             )
@@ -1153,16 +1153,16 @@ export default function App() {
                       data-testid="schema-skew-notice"
                     >
                       <span className="schema-skew-notice__text">
-                        This session was written by a newer version of pi — some content may not
-                        display. Update pi-gui (or open it with the pi CLI) to see everything.
+                        此会话由较新版本的 pi 创建，部分内容可能无法显示。请更新 pi-gui，或使用 pi
+                        CLI 查看完整内容。
                       </span>
                       <button
                         type="button"
                         className="schema-skew-notice__dismiss"
-                        aria-label="Dismiss notice"
+                        aria-label="关闭提示"
                         onClick={() => dismissSchemaSkewNotice(selectedSessionKey)}
                       >
-                        Dismiss
+                        关闭
                       </button>
                     </div>
                   ) : null}
@@ -1303,9 +1303,9 @@ export default function App() {
           ) : selectedWorkspace ? (
             <section className="canvas canvas--empty">
               <div className="empty-panel">
-                <div className="session-header__eyebrow">Workspace</div>
+                <div className="session-header__eyebrow">工作区</div>
                 <h1>{selectedWorkspace.name}</h1>
-                <p>Create a thread for this folder, then jump between sessions from the sidebar.</p>
+                <p>为这个文件夹新建对话，可在侧边栏切换各个会话。</p>
                 <div className="empty-panel__actions">
                   <button
                     className="button button--primary"
@@ -1316,7 +1316,7 @@ export default function App() {
                       )
                     }
                   >
-                    New thread
+                    新建对话
                   </button>
                 </div>
               </div>
@@ -1324,12 +1324,9 @@ export default function App() {
           ) : (
             <section className="canvas canvas--empty">
               <div className="empty-panel">
-                <div className="session-header__eyebrow">Workspace</div>
-                <h1>Open a folder to start</h1>
-                <p>
-                  Add project folders, group sessions under them, and jump between threads from the
-                  sidebar.
-                </p>
+                <div className="session-header__eyebrow">工作区</div>
+                <h1>打开文件夹，开始使用</h1>
+                <p>添加项目文件夹，在侧边栏管理和切换对话。</p>
               </div>
             </section>
           )}
@@ -1397,7 +1394,7 @@ export default function App() {
                     />
                   ) : (
                     <p className="workbench__unavailable" role="status">
-                      This file checkout is unavailable.
+                      此工作目录不可用。
                     </p>
                   ),
                 terminal: () => (

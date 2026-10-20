@@ -202,7 +202,7 @@ export function CommandPalette<F extends string>({
             onChange={(event) => onQueryChange(event.target.value)}
           />
           <button
-            aria-label="Close"
+            aria-label="关闭"
             className="command-palette__close"
             type="button"
             onClick={onClose}
@@ -212,7 +212,7 @@ export function CommandPalette<F extends string>({
         </div>
 
         {filters && filters.length > 0 ? (
-          <div aria-label="Filters" className="command-palette__filters" role="tablist">
+          <div aria-label="筛选" className="command-palette__filters" role="tablist">
             {filters.map((filter) => (
               <button
                 key={filter.id}
@@ -295,23 +295,23 @@ export function CommandPalette<F extends string>({
         <div className="command-palette__footer" aria-hidden="true">
           <span>
             <kbd>↑</kbd>
-            <kbd>↓</kbd> Navigate
+            <kbd>↓</kbd> 选择
           </span>
           <span>
-            <kbd>↵</kbd> Open
+            <kbd>↵</kbd> 打开
           </span>
           {filters && filters.length > 0 ? (
             <span>
-              <kbd>Tab</kbd> Filters
+              <kbd>Tab</kbd> 筛选
             </span>
           ) : null}
           {onBack ? (
             <span>
-              <kbd>⌫</kbd> Back
+              <kbd>⌫</kbd> 返回
             </span>
           ) : null}
           <span>
-            <kbd>Esc</kbd> Close
+            <kbd>Esc</kbd> 关闭
           </span>
         </div>
       </div>

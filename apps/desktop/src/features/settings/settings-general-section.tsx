@@ -35,40 +35,37 @@ export function SettingsGeneralSection({
 
   return (
     <>
-      <SettingsGroup title="Agent">
+      <SettingsGroup title="智能助手">
         <SettingsRow
-          title="Model settings scope"
-          description="Apply the default model and enabled models everywhere, or set them per repo."
+          title="模型设置范围"
+          description="统一使用默认模型和启用列表，或分别为各项目设置。"
         >
           <SettingsSegmented
-            label="Model settings scope"
+            label="模型设置范围"
             options={[
-              { value: "app-global", label: "App global" },
-              { value: "per-repo", label: "Per repo" },
+              { value: "app-global", label: "整个应用" },
+              { value: "per-repo", label: "按项目设置" },
             ]}
             value={modelSettingsScopeMode}
             onChange={onSetModelSettingsScopeMode}
           />
         </SettingsRow>
-        <SettingsRow
-          title="Skill slash commands"
-          description="Offer each skill as a slash command in the composer."
-        >
+        <SettingsRow title="技能斜杠命令" description="在输入框中通过斜杠命令选择技能。">
           <SettingsSwitch
             checked={runtime?.settings.enableSkillCommands ?? true}
-            label="Enable skill slash commands"
+            label="启用技能斜杠命令"
             onChange={onToggleSkillCommands}
           />
         </SettingsRow>
       </SettingsGroup>
 
-      <SettingsGroup title="Terminal">
+      <SettingsGroup title="终端">
         <SettingsRow
-          title="Shell"
-          description="The shell the integrated terminal starts. Leave blank to use your login shell."
+          title="命令解释器"
+          description="内置终端使用的命令解释器，留空则使用系统默认值。"
         >
           <input
-            aria-label="Shell of integrated terminal"
+            aria-label="内置终端的命令解释器"
             className="settings-text-input"
             placeholder="/bin/zsh"
             spellCheck={false}

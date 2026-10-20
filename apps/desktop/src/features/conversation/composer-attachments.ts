@@ -96,7 +96,7 @@ export function hasFilesInDataTransfer(dataTransfer: DataTransfer | null | undef
   }
 
   const types = Array.from(dataTransfer.types ?? []);
-  if (types.includes("Files")) {
+  if (types.includes("文件")) {
     return true;
   }
 

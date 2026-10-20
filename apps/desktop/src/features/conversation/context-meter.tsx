@@ -28,8 +28,8 @@ export function ContextMeter({ usage }: ContextMeterProps) {
     percent === null ? "unknown" : percent > 90 ? "danger" : percent > 70 ? "warning" : "normal";
   const label =
     percent === null
-      ? "Context window: usage unknown until the next reply"
-      : `Context window: ${formatPercent(percent)} used`;
+      ? "上下文容量：下一次回复后显示用量"
+      : `上下文容量： ${formatPercent(percent)} used`;
 
   return (
     <div
@@ -64,23 +64,23 @@ export function ContextMeter({ usage }: ContextMeterProps) {
       {open ? (
         <div className="context-meter__card" id={cardId} role="tooltip">
           <section className="context-meter__section">
-            <h3 className="context-meter__heading">Context window</h3>
+            <h3 className="context-meter__heading">上下文容量</h3>
             <p className="context-meter__headline">
               {context.tokens === null || percent === null
-                ? `Unknown until the next reply · ${formatTokens(context.contextWindow)} window`
-                : `${formatPercent(percent)} used · ${formatTokens(context.tokens)} / ${formatTokens(context.contextWindow)} tokens`}
+                ? `下一次回复后显示 · ${formatTokens(context.contextWindow)} window`
+                : `${formatPercent(percent)} 已使用 · ${formatTokens(context.tokens)} / ${formatTokens(context.contextWindow)} tokens`}
             </p>
             <p className="context-meter__note">
               {context.compactAtTokens === undefined
-                ? "Automatic compaction is off"
-                : `Compacts automatically at ${formatPercent((context.compactAtTokens / context.contextWindow) * 100)}`}
+                ? "自动压缩已关闭"
+                : `自动压缩阈值： ${formatPercent((context.compactAtTokens / context.contextWindow) * 100)}`}
             </p>
           </section>
           <section className="context-meter__section">
-            <h3 className="context-meter__heading">Prompt cache</h3>
+            <h3 className="context-meter__heading">提示词缓存</h3>
             {usage.lastTurn ? (
               <Row
-                label="Last turn"
+                label="上一轮"
                 value={`${formatPercent(cacheHitPercent(usage.lastTurn))} cached`}
               />
             ) : null}
@@ -88,14 +88,14 @@ export function ContextMeter({ usage }: ContextMeterProps) {
           </section>
           {usage.planLimits && usage.planLimits.limits.length > 0 ? (
             <section className="context-meter__section">
-              <h3 className="context-meter__heading">Plan limits</h3>
+              <h3 className="context-meter__heading">套餐额度</h3>
               {usage.planLimits.limits.map((limit) => (
                 <Row
                   key={limit.windowMinutes}
                   label={`${formatPercent(limit.usedPercent)} of ${windowLabel(limit)} limit`}
                   value={
                     limit.resetsAt
-                      ? `resets in ${formatDuration(Date.parse(limit.resetsAt) - now)}`
+                      ? `重置时间： ${formatDuration(Date.parse(limit.resetsAt) - now)}`
                       : ""
                   }
                 />
@@ -103,18 +103,18 @@ export function ContextMeter({ usage }: ContextMeterProps) {
             </section>
           ) : null}
           <section className="context-meter__section">
-            <h3 className="context-meter__heading">This thread</h3>
+            <h3 className="context-meter__heading">当前对话</h3>
             <Row
-              label="Input / Output"
+              label="输入 / 输出"
               value={`${formatTokens(usage.totals.input)} / ${formatTokens(usage.totals.output)}`}
             />
             <Row
-              label="Cache read / write"
+              label="缓存读取 / 写入"
               value={`${formatTokens(usage.totals.cacheRead)} / ${formatTokens(usage.totals.cacheWrite)}`}
             />
             <Row
-              label="Cost"
-              value={usage.subscription ? "Subscription" : `$${usage.totals.cost.toFixed(2)}`}
+              label="费用"
+              value={usage.subscription ? "订阅" : `$${usage.totals.cost.toFixed(2)}`}
             />
           </section>
         </div>
@@ -135,20 +135,20 @@ function Row({ label, value }: { readonly label: string; readonly value: string 
 function CacheRow({ cache, now }: { readonly cache: SessionPromptCache; readonly now: number }) {
   const nextRefreshIn = cache.nextRefreshAt ? Date.parse(cache.nextRefreshAt) - now : 0;
   if (nextRefreshIn > 0) {
-    return <Row label="Kept warm" value={`next refresh in ${formatCountdown(nextRefreshIn)}`} />;
+    return <Row label="缓存保温中" value={`下次刷新： ${formatCountdown(nextRefreshIn)}`} />;
   }
   if (!cache.expiresAt) {
     return cache.lifetimeSeconds === undefined ? (
-      <Row label="Expiry" value="not reported by this model" />
+      <Row label="过期时间" value="not reported by this model" />
     ) : (
-      <Row label="Expiry" value="nothing cached for this model yet" />
+      <Row label="过期时间" value="nothing cached for this model yet" />
     );
   }
   const expiresIn = Date.parse(cache.expiresAt) - now;
   return expiresIn > 0 ? (
-    <Row label="Expires in" value={formatCountdown(expiresIn)} />
+    <Row label="有效期：" value={formatCountdown(expiresIn)} />
   ) : (
-    <Row label="Expiry" value="expired, next turn rewrites it" />
+    <Row label="过期时间" value="expired, next turn rewrites it" />
   );
 }
 

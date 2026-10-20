@@ -36,9 +36,9 @@ export function QueuedComposerMessages({
     <div className="queued-composer-messages" data-testid="queued-composer-messages">
       {editingQueuedMessageId ? (
         <div className="queued-composer-messages__editing" data-testid="queued-composer-editing">
-          <span>Editing queued message</span>
+          <span>正在编辑队列中的消息</span>
           <button type="button" onClick={onCancelEdit}>
-            Cancel
+            取消
           </button>
         </div>
       ) : null}
@@ -55,21 +55,21 @@ export function QueuedComposerMessages({
             <div className="queued-composer-message__actions">
               {message.mode !== "steer" ? (
                 <button type="button" onClick={() => onSteerMessage(message.id)}>
-                  Steer
+                  调整当前任务
                 </button>
               ) : null}
               {/* Its annotations cannot be reattached to the transcript, so it is not editable. */}
               {parseAnnotatedPrompt(message.text) ? null : (
                 <button type="button" onClick={() => onEditMessage(message.id)}>
-                  Edit
+                  编辑
                 </button>
               )}
               <button
-                aria-label={`Delete queued message ${message.text || message.id}`}
+                aria-label={`删除队列消息 ${message.text || message.id}`}
                 type="button"
                 onClick={() => onRemoveMessage(message.id)}
               >
-                Delete
+                删除
               </button>
             </div>
           </div>

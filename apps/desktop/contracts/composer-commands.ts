@@ -12,14 +12,14 @@ export type ParsedComposerCommand =
   | { type: "name"; title: string };
 
 const INCOMPLETE_COMMAND_MESSAGES: Readonly<Record<string, string>> = {
-  "/compact": "Add optional instructions after /compact or send it directly from the slash menu.",
-  "/login": "Choose a provider from the slash menu before sending /login.",
-  "/logout": "Choose a connected provider from the slash menu before sending /logout.",
-  "/model": "Choose a provider and model from the slash menu before sending /model.",
-  "/name": "Add a thread title after /name.",
-  "/scoped-models": "Open Enabled models from the slash menu or Settings.",
-  "/settings": "Open Settings from the slash menu or Cmd+,.",
-  "/thinking": "Choose a reasoning level from the slash menu before sending /thinking.",
+  "/compact": "可在 /compact 后补充要求，或从斜杠菜单中直接发送。",
+  "/login": "发送 /login 前，请先在斜杠菜单中选择模型服务。",
+  "/logout": "发送 /logout 前，请先在斜杠菜单中选择已连接的模型服务。",
+  "/model": "发送 /model 前，请先在斜杠菜单中选择模型服务和模型。",
+  "/name": "请在 /name 后填写对话标题。",
+  "/scoped-models": "请从斜杠菜单或设置中打开“已启用的模型”。",
+  "/settings": "请从斜杠菜单或通过 Cmd+, 打开设置。",
+  "/thinking": "发送 /thinking 前，请先在斜杠菜单中选择思考强度。",
 } as const;
 
 export function resolveRuntimeCommands(
@@ -130,11 +130,11 @@ function normalizeRuntimeCommandName(value: string): string {
 
 export function formatSessionConfigStatus(config?: SessionConfig): string {
   const parts = [
-    config?.provider && config?.modelId ? `Model ${config.provider}:${config.modelId}` : undefined,
-    config?.thinkingLevel ? `Thinking ${config.thinkingLevel}` : undefined,
+    config?.provider && config?.modelId ? `模型 ${config.provider}:${config.modelId}` : undefined,
+    config?.thinkingLevel ? `思考强度 ${config.thinkingLevel}` : undefined,
   ].filter(Boolean);
 
-  return parts.length > 0 ? parts.join(" · ") : "No session overrides set";
+  return parts.length > 0 ? parts.join(" · ") : "尚未设置会话级覆盖选项";
 }
 
 export function parseComposerCommand(value: string): ParsedComposerCommand | undefined {

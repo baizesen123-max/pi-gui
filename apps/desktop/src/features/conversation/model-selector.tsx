@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { labelForThinking } from "../settings/settings-utils";
 import type { RuntimeSnapshot } from "@pi-gui/session-driver/runtime-types";
 import {
   buildModelOptions,
@@ -32,8 +33,8 @@ export function ModelSelector({
   disabled,
   dropdownPlacement = "above",
   showEmptyModelControl = false,
-  unselectedModelLabel = "Choose model",
-  emptyModelLabel = "Choose model",
+  unselectedModelLabel = "选择模型",
+  emptyModelLabel = "选择模型",
   emptyModelTitle = MODEL_OPTIONS_EMPTY_TITLE,
   onSetModel,
   onSetThinking,
@@ -117,7 +118,7 @@ export function ModelSelector({
               <div className="model-selector__filter">
                 <input
                   className="model-selector__filter-input"
-                  placeholder="Filter models..."
+                  placeholder="筛选模型…"
                   value={modelFilter}
                   onChange={(e) => setModelFilter(e.target.value)}
                   autoFocus
@@ -142,7 +143,7 @@ export function ModelSelector({
                       >
                         <span className="model-selector__item-label">{option.label}</span>
                         {isActive ? (
-                          <span className="model-selector__item-meta">active</span>
+                          <span className="model-selector__item-meta">当前使用</span>
                         ) : null}
                       </button>
                     );
@@ -152,10 +153,10 @@ export function ModelSelector({
               {groupedModels.length === 0 ? (
                 <>
                   <div className="model-selector__group-title">
-                    {noMatchingModels ? "No matching models" : emptyModelTitle}
+                    {noMatchingModels ? "没有匹配的模型" : emptyModelTitle}
                   </div>
                   {noMatchingModels ? (
-                    <div className="model-selector__empty">Try a different filter.</div>
+                    <div className="model-selector__empty">请换一个筛选条件。</div>
                   ) : null}
                 </>
               ) : null}
@@ -171,14 +172,14 @@ export function ModelSelector({
             disabled={disabled}
             onClick={() => setOpen(open === "thinking" ? "none" : "thinking")}
           >
-            {thinkingLevel}
+            {thinkingLevel ? labelForThinking(thinkingLevel) : thinkingLevel}
           </button>
           {open === "thinking" ? (
             <div
               className={`model-selector__dropdown ${dropdownPlacement === "below" ? "model-selector__dropdown--below" : ""}`}
               onWheel={(event) => event.stopPropagation()}
             >
-              <div className="model-selector__group-title">Thinking Level</div>
+              <div className="model-selector__group-title">思考强度</div>
               {THINKING_OPTIONS.map((option) => {
                 const isActive = option.value === thinkingLevel;
                 return (

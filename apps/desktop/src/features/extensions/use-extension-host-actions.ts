@@ -34,10 +34,9 @@ export function useExtensionHostActions({
   const beforePrepareTaskDraft = useCallback(async () => {
     const draftTarget = target;
     if (!draftTarget || targetRef.current !== draftTarget)
-      throw new Error("Return to the extension's task to create a task draft.");
+      throw new Error("请返回此扩展所属的对话，再创建任务草稿。");
     await flushComposerDraftAsync(draftTarget);
-    if (targetRef.current !== draftTarget)
-      throw new Error("The task changed before its draft could be saved.");
+    if (targetRef.current !== draftTarget) throw new Error("保存草稿前，任务已发生变化。");
   }, [flushComposerDraftAsync, target]);
   const handlePrepareTaskDraftPendingChange = useCallback(
     (pending: boolean, requestKey: string) => {
@@ -72,7 +71,7 @@ export function useExtensionHostActions({
             if (targetRef.current !== current || fileRequestRef.current !== request) return;
             setFileError({
               target: current,
-              message: `Couldn't open ${event.path}. ${error instanceof Error ? error.message : "Try opening the file again."}`,
+              message: `无法打开 ${event.path}. ${error instanceof Error ? error.message : "请重新打开文件。"}`,
             });
           });
       }),

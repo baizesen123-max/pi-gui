@@ -53,22 +53,22 @@ export function totalComposerImageBytes(attachments: readonly ComposerAttachment
 }
 
 export function composerImageBytesLimitMessage(): string {
-  return `Image is larger than ${formatMegabytes(COMPOSER_IMAGE_MAX_BYTES)} MB.`;
+  return `图片大小超过 ${formatMegabytes(COMPOSER_IMAGE_MAX_BYTES)} MB.`;
 }
 
 export function composerImagePixelsLimitMessage(): string {
-  return `Image is larger than ${COMPOSER_IMAGE_MAX_DIMENSION} pixels.`;
+  return `图片大小超过 ${COMPOSER_IMAGE_MAX_DIMENSION} pixels.`;
 }
 
 export function composerImageAggregateLimitMessage(): string {
-  return `Images together are larger than ${formatMegabytes(COMPOSER_IMAGE_MAX_BYTES_TOTAL)} MB.`;
+  return `图片总大小超过 ${formatMegabytes(COMPOSER_IMAGE_MAX_BYTES_TOTAL)} MB.`;
 }
 
 export function composerImageSavedSkipMessage(skipped: number): string {
   if (skipped === 1) {
-    return "Skipped an oversized saved image.";
+    return "已跳过一张过大的已保存图片。";
   }
-  return `Skipped ${skipped} oversized saved images.`;
+  return `已跳过 ${skipped} 张过大的已保存图片。`;
 }
 
 export function composerImageBytesLimitError(

@@ -59,8 +59,8 @@ export interface ThemePreset {
 export const themePresets: readonly ThemePreset[] = [
   {
     id: "default",
-    name: "Default",
-    description: "The pi-gui palette.",
+    name: "默认",
+    description: "pi-gui 默认配色。",
     variants: {
       light: {
         seed: seed("#ffffff", "#282825", "#526795", "#2ea043", "#c45666", "#d97706"),
@@ -75,7 +75,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "catppuccin",
     name: "Catppuccin",
-    description: "Soft pastel Latte and Mocha variants.",
+    description: "柔和的 Latte 浅色与 Mocha 深色配色。",
     variants: {
       light: {
         seed: seed("#eff1f5", "#4c4f69", "#8839ef", "#40a02b", "#d20f39", "#df8e1d"),
@@ -90,7 +90,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "tokyo-night",
     name: "Tokyo Night",
-    description: "A cool editor palette with a bright Day variant.",
+    description: "冷色调编辑器配色，搭配明亮的日间模式。",
     variants: {
       light: {
         seed: seed("#d5d6db", "#343b58", "#34548a", "#485e30", "#8c4351", "#8f5e15"),
@@ -105,7 +105,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "nord",
     name: "Nord",
-    description: "Low-contrast arctic neutrals and blue accents.",
+    description: "低对比度的极地中性色，搭配蓝色点缀。",
     variants: {
       light: {
         seed: seed("#eceff4", "#2e3440", "#5e81ac", "#5d7f45", "#bf616a", "#b0802a"),
@@ -120,7 +120,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "dracula",
     name: "Dracula",
-    description: "Dracula and its official Alucard light variant.",
+    description: "Dracula 深色与官方 Alucard 浅色配色。",
     variants: {
       light: {
         seed: seed("#fffbeb", "#1f1f1f", "#644ac9", "#14710a", "#cb3a2a", "#a34d14"),
@@ -135,7 +135,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "gruvbox",
     name: "Gruvbox",
-    description: "Warm retro contrast.",
+    description: "温暖的复古配色。",
     variants: {
       light: {
         seed: seed("#fbf1c7", "#3c3836", "#458588", "#79740e", "#9d0006", "#b57614"),
@@ -150,7 +150,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "github",
     name: "GitHub",
-    description: "GitHub-style light and dark surfaces.",
+    description: "GitHub 风格的浅色与深色界面。",
     variants: {
       light: {
         seed: seed("#ffffff", "#1f2328", "#0969da", "#1a7f37", "#cf222e", "#9a6700"),
@@ -165,7 +165,7 @@ export const themePresets: readonly ThemePreset[] = [
   {
     id: "vscode",
     name: "VS Code",
-    description: "Familiar editor colours with blue accents.",
+    description: "熟悉的编辑器配色，搭配蓝色点缀。",
     variants: {
       light: {
         seed: seed("#ffffff", "#1f1f1f", "#007acc", "#587c0c", "#ad0707", "#bf8803"),

@@ -219,14 +219,14 @@ export function useComposerDraftSync(params: UseComposerDraftSyncParams) {
 
   const flushComposerDraftAsync = useCallback(
     async (target: SessionRef): Promise<void> => {
-      if (!api) throw new Error("The desktop connection is unavailable.");
+      if (!api) throw new Error("应用连接不可用。");
       const sessionKey = `${target.workspaceId}:${target.sessionId}`;
       const requireCurrentSession = () => {
         if (
           currentSessionKeyRef.current !== sessionKey ||
           hydratedComposerSessionKeyRef.current !== sessionKey
         )
-          throw new Error("The task changed before its draft could be saved.");
+          throw new Error("保存草稿前，任务已发生变化。");
       };
       const cancelPendingWrite = () => {
         if (composerDraftWriteTimerRef.current !== null) {

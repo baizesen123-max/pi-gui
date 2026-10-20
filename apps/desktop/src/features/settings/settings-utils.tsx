@@ -12,13 +12,17 @@ export const THINKING_LEVELS: NonNullable<RuntimeSettingsSnapshot["defaultThinki
   "max",
 ];
 
-export function labelForThinking(
-  level: NonNullable<RuntimeSettingsSnapshot["defaultThinkingLevel"]>,
-): string {
-  if (level === "xhigh") {
-    return "Extra High";
-  }
-  return level.charAt(0).toUpperCase() + level.slice(1);
+export function labelForThinking(level: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    off: "关闭",
+    minimal: "最低",
+    low: "低",
+    medium: "中",
+    high: "高",
+    xhigh: "很高",
+    max: "最高",
+  };
+  return labels[level] ?? level;
 }
 
 export function filterProviders(
@@ -139,21 +143,21 @@ export function ProviderRow({
 function describeProviderStatus(provider: RuntimeSnapshot["providers"][number]): string {
   switch (provider.authSource) {
     case "oauth":
-      return "OAuth · connected";
+      return "OAuth · 已连接";
     case "auth_file":
-      return "API key · connected";
+      return "API 密钥 · 已连接";
     case "env":
-      return "Environment variable · connected";
+      return "环境变量 · 已连接";
     case "external":
-      return provider.hasAuth ? "Configured externally · connected" : "Configure externally";
+      return provider.hasAuth ? "外部配置 · 已连接" : "通过外部配置";
     default:
       if (provider.oauthSupported) {
-        return provider.apiKeySetupSupported ? "OAuth or API key" : "OAuth";
+        return provider.apiKeySetupSupported ? "OAuth 或 API 密钥" : "OAuth";
       }
       if (provider.apiKeySetupSupported) {
-        return "API key";
+        return "API 密钥";
       }
-      return provider.authType === "api_key" ? "API key" : "Built in";
+      return provider.authType === "api_key" ? "API 密钥" : "内置";
   }
 }
 
@@ -171,12 +175,12 @@ function resolveProviderActions(
   onConfigureApiKey: (provider: RuntimeSnapshot["providers"][number]) => void,
 ): readonly ProviderAction[] {
   if (provider.authSource === "oauth") {
-    return [{ disabled: false, label: "Logout", onClick: () => onLogoutProvider(provider.id) }];
+    return [{ disabled: false, label: "退出登录", onClick: () => onLogoutProvider(provider.id) }];
   }
 
   const actions: ProviderAction[] = [];
   if (provider.oauthSupported && provider.authSource === "none") {
-    actions.push({ disabled: false, label: "Login", onClick: () => onLoginProvider(provider.id) });
+    actions.push({ disabled: false, label: "登录", onClick: () => onLoginProvider(provider.id) });
   }
   if (
     provider.apiKeySetupSupported &&
@@ -184,7 +188,7 @@ function resolveProviderActions(
   ) {
     actions.push({
       disabled: false,
-      label: provider.authSource === "auth_file" ? "Manage" : "Set API key",
+      label: provider.authSource === "auth_file" ? "管理" : "设置 API 密钥",
       onClick: () => onConfigureApiKey(provider),
     });
   }
@@ -192,5 +196,5 @@ function resolveProviderActions(
     return actions;
   }
 
-  return [{ disabled: true, label: "Configure externally" }];
+  return [{ disabled: true, label: "通过外部配置" }];
 }

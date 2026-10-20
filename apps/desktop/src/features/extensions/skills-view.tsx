@@ -7,7 +7,7 @@ import { sourceScopeGroupLabel } from "./extension-display";
 import { displayPath, ResourceDetail } from "./resource-detail";
 import { ResourceEmptyState, ResourceList, type ResourceListGroup } from "./resource-list";
 
-const GROUP_ORDER = ["Workspace", "User", "This session"];
+const GROUP_ORDER = ["工作区", "用户", "当前会话"];
 
 interface SkillsTabProps {
   readonly workspace: WorkspaceRecord;
@@ -35,11 +35,11 @@ export function SkillsTab({
   const list =
     skills.length === 0 ? (
       <ResourceEmptyState
-        title={searching ? "No skills match" : "No skills yet"}
+        title={searching ? "没有匹配的技能" : "暂无技能"}
         body={
           searching
-            ? "Try another name, description or slash command."
-            : "Skills are discovered in this workspace and your user skill folders. Create one, or refresh after adding one."
+            ? "请尝试其他名称、描述或斜杠命令。"
+            : "从工作区和用户技能目录中查找技能。可新建技能，或添加后刷新。"
         }
       />
     ) : (
@@ -63,18 +63,18 @@ export function SkillsTab({
                 type="button"
                 onClick={() => onOpenSkillFolder(selected.filePath)}
               >
-                Open folder
+                打开文件夹
               </button>
               <button
                 className="button button--primary"
                 type="button"
                 onClick={() => onTrySkill(selected)}
               >
-                Try
+                试用
               </button>
             </>
           }
-          backLabel="All skills"
+          backLabel="全部技能"
           enabled={selected.enabled}
           icon={<SkillIcon />}
           subtitle={selected.slashCommand}
@@ -84,25 +84,22 @@ export function SkillsTab({
         >
           <p className="resource-detail__description">{selected.description}</p>
           <SettingsGroup>
-            <SettingsRow
-              title="Slash command"
-              description="Type it in the composer to run the skill."
-            >
+            <SettingsRow title="斜杠命令" description="在输入框中输入此命令，即可运行技能。">
               <code className="resource-detail__code">{selected.slashCommand}</code>
             </SettingsRow>
             <SettingsRow
-              title="Model invocation"
+              title="模型调用"
               description={
                 selected.disableModelInvocation
-                  ? "Only runs when you type its slash command."
-                  : "pi can also choose this skill on its own when it fits the task."
+                  ? "仅在手动输入斜杠命令时运行。"
+                  : "任务适合时，pi 也可以自动选择此技能。"
               }
             >
               <span className="settings-row__value">
-                {selected.disableModelInvocation ? "Slash command only" : "Automatic"}
+                {selected.disableModelInvocation ? "仅通过斜杠命令调用" : "自动"}
               </span>
             </SettingsRow>
-            <SettingsRow title="Location" description={sourceScopeGroupLabel(selected.scope)}>
+            <SettingsRow title="位置" description={sourceScopeGroupLabel(selected.scope)}>
               <code className="resource-detail__code" title={selected.filePath}>
                 {displayPath(selected.filePath, workspace.path)}
               </code>

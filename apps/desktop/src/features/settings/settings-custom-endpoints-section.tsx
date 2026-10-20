@@ -78,8 +78,8 @@ export function SettingsCustomEndpointsSection({
   return (
     <>
       <SettingsGroup
-        title="Custom endpoints"
-        description="Add OpenAI-compatible endpoints (Ollama, vLLM, or your own server). Stored in ~/.pi/agent/models.json."
+        title="自定义模型接口"
+        description="添加 OpenAI 兼容接口（如 Ollama、vLLM 或自建服务），配置保存在 ~/.pi/agent/models.json。"
       >
         {loadError ? (
           <div className="settings-row">
@@ -88,7 +88,7 @@ export function SettingsCustomEndpointsSection({
         ) : null}
         {entries.length === 0 ? (
           <div className="settings-row">
-            <span className="settings-row__description">No custom endpoints yet.</span>
+            <span className="settings-row__description">暂无自定义接口。</span>
           </div>
         ) : (
           entries.map((entry) => (
@@ -96,7 +96,7 @@ export function SettingsCustomEndpointsSection({
               <div className="settings-row__label">
                 <div className="settings-row__title">{entry.providerId}</div>
                 <div className="settings-row__description">
-                  {entry.baseUrl} · {entry.models.length} model
+                  {entry.baseUrl} · {entry.models.length} 个模型
                   {entry.models.length === 1 ? "" : "s"}
                 </div>
               </div>
@@ -106,7 +106,7 @@ export function SettingsCustomEndpointsSection({
                   type="button"
                   onClick={() => setDialog({ kind: "edit", original: entry })}
                 >
-                  Edit
+                  编辑
                 </button>
                 <button
                   className="button button--secondary"
@@ -117,7 +117,7 @@ export function SettingsCustomEndpointsSection({
                     })
                   }
                 >
-                  Remove
+                  移除
                 </button>
               </div>
             </div>
@@ -125,14 +125,12 @@ export function SettingsCustomEndpointsSection({
         )}
         <div className="settings-row">
           <div className="settings-row__label">
-            <div className="settings-row__title">Add endpoint</div>
-            <div className="settings-row__description">
-              Register a local or custom OpenAI-compatible server.
-            </div>
+            <div className="settings-row__title">添加接口</div>
+            <div className="settings-row__description">注册本地或自定义的 OpenAI 兼容服务。</div>
           </div>
           <div className="settings-row__control">
             <button className="button" type="button" onClick={() => setDialog({ kind: "create" })}>
-              Add endpoint
+              添加接口
             </button>
           </div>
         </div>
@@ -203,11 +201,11 @@ function CustomEndpointDialog({
   const handleProbe = async () => {
     const api = window.piApp;
     if (!api) {
-      setProbeError("Desktop bridge is not available.");
+      setProbeError("应用连接不可用。");
       return;
     }
     if (!isValidHttpBaseUrl(baseUrl)) {
-      setProbeError("Base URL must start with http:// or https://");
+      setProbeError("接口地址必须以 http:// 或 https:// 开头。");
       return;
     }
     restoreProbeFocusRef.current = document.activeElement === probeButtonRef.current;
@@ -253,11 +251,11 @@ function CustomEndpointDialog({
       return;
     }
     if (!isValidHttpBaseUrl(baseUrl)) {
-      setFormError("Base URL must start with http:// or https://");
+      setFormError("接口地址必须以 http:// 或 https:// 开头。");
       return;
     }
     if (models.length === 0) {
-      setFormError("Select at least one model.");
+      setFormError("请至少选择一个模型。");
       return;
     }
     setSavePending(true);
@@ -301,17 +299,16 @@ function CustomEndpointDialog({
           data-testid="custom-endpoint-dialog-content"
         >
           <div className="extension-dialog__title" id={titleId}>
-            {isEdit ? "Edit custom endpoint" : "Add custom endpoint"}
+            {isEdit ? "编辑自定义接口" : "添加自定义接口"}
           </div>
           <p className="extension-dialog__body">
-            Configure an OpenAI-compatible server. The endpoint and API key are stored in plaintext
-            at
+            配置 OpenAI 兼容服务。接口地址和 API 密钥会以明文保存在
             <code> ~/.pi/agent/models.json</code>.
           </p>
           <label className="settings-field">
-            <span>Provider ID</span>
+            <span>服务标识</span>
             <input
-              aria-label="Provider ID"
+              aria-label="服务标识"
               autoFocus={!isEdit}
               className="settings-search"
               disabled={isEdit || savePending}
@@ -325,14 +322,14 @@ function CustomEndpointDialog({
               </span>
             ) : (
               <span className="settings-row__description">
-                Lowercase letters, digits, and dashes. Cannot be changed later.
+                使用小写字母、数字和连字符，创建后不可更改。
               </span>
             )}
           </label>
           <label className="settings-field">
-            <span>Base URL</span>
+            <span>接口地址</span>
             <input
-              aria-label="Base URL"
+              aria-label="接口地址"
               className="settings-search"
               disabled={savePending}
               placeholder="http://localhost:11434/v1"
@@ -340,31 +337,30 @@ function CustomEndpointDialog({
               onChange={(event) => setBaseUrl(event.target.value)}
             />
             <span className="settings-row__description">
-              Include the <code>/v1</code> suffix. Ollama: <code>http://localhost:11434/v1</code>.
-              vLLM: <code>http://localhost:8000/v1</code>.
+              请包含 <code>/v1</code> 后缀。Ollama： <code>http://localhost:11434/v1</code>。vLLM：{" "}
+              <code>http://localhost:8000/v1</code>.
             </span>
           </label>
           <label className="settings-field">
-            <span>API key</span>
+            <span>API 密钥</span>
             <input
-              aria-label="API key"
+              aria-label="API 密钥"
               className="settings-search"
               disabled={savePending}
-              placeholder="vLLM: pass through; Ollama: leave blank"
+              placeholder="vLLM：填写服务密钥；Ollama：留空"
               type="password"
               value={apiKey}
               onChange={(event) => setApiKey(event.target.value)}
             />
             <span className="settings-row__description">
-              Required by the storage format. For vLLM started with <code>--api-key</code>, enter
-              that key. For Ollama or other servers without auth, leave blank and a placeholder is
-              saved.
+              存储格式要求此项。若 vLLM 启动时使用了 <code>--api-key</code>，请填写相应密钥。Ollama
+              等无需认证的服务可留空。
             </span>
           </label>
 
           <div className="settings-field">
             <div className="settings-field__header">
-              <span>Models</span>
+              <span>模型</span>
               <button
                 className="button button--secondary"
                 disabled={probePending || savePending}
@@ -377,7 +373,7 @@ function CustomEndpointDialog({
                   })
                 }
               >
-                {probePending ? "Detecting…" : "Detect models"}
+                {probePending ? "正在检测…" : "检测模型"}
               </button>
             </div>
             {probeError ? (
@@ -391,8 +387,7 @@ function CustomEndpointDialog({
               disabled={savePending}
             />
             <p className="settings-row__description">
-              Tool calling is required. Smaller models (&lt; 7B) often do not emit OpenAI-style
-              function calls cleanly.
+              模型必须支持工具调用。小于 7B 的模型通常无法稳定生成 OpenAI 格式的工具调用。
             </p>
           </div>
         </div>
@@ -408,7 +403,7 @@ function CustomEndpointDialog({
               type="button"
               onClick={onClose}
             >
-              Cancel
+              取消
             </button>
             <button
               className="button"
@@ -423,7 +418,7 @@ function CustomEndpointDialog({
                 })
               }
             >
-              {isEdit ? "Save changes" : "Add endpoint"}
+              {isEdit ? "保存修改" : "添加接口"}
             </button>
           </div>
         </div>
@@ -462,9 +457,7 @@ function ModelChecklist({
   return (
     <div className="settings-disclosure__body">
       {knownIds.size === 0 ? (
-        <p className="settings-row__description">
-          Click &ldquo;Detect models&rdquo; or type a model ID below to add one manually.
-        </p>
+        <p className="settings-row__description">点击“检测模型”，或在下方输入模型 ID 手动添加。</p>
       ) : (
         <ul className="settings-list custom-endpoint-model-list">
           {[...knownIds]
@@ -473,7 +466,7 @@ function ModelChecklist({
               <li key={id} className="settings-row">
                 <label className="custom-endpoint-model-list__item">
                   <input
-                    aria-label={`Enable ${id}`}
+                    aria-label={`启用 ${id}`}
                     type="checkbox"
                     checked={selectedIds.has(id)}
                     disabled={disabled}
@@ -487,10 +480,10 @@ function ModelChecklist({
       )}
       <div className="settings-row">
         <input
-          aria-label="Add model ID manually"
+          aria-label="手动添加模型标识"
           className="settings-search"
           disabled={disabled}
-          placeholder="Add model ID manually"
+          placeholder="手动添加模型标识"
           value={manualDraft}
           onChange={(event) => setManualDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -506,7 +499,7 @@ function ModelChecklist({
           type="button"
           onClick={submitManual}
         >
-          Add
+          添加
         </button>
       </div>
     </div>
@@ -520,13 +513,13 @@ function validateProviderId(
 ): string | undefined {
   const trimmed = candidate.trim();
   if (!trimmed) {
-    return "Provider ID is required.";
+    return "请填写服务标识。";
   }
   if (!CUSTOM_PROVIDER_ID_PATTERN.test(trimmed)) {
-    return "Use lowercase letters, digits, and dashes (max 64 chars).";
+    return "使用小写字母、数字和连字符，不超过 64 个字符。";
   }
   if (trimmed !== editing && existing.includes(trimmed)) {
-    return `Provider ID "${trimmed}" is already in use.`;
+    return `服务标识“${trimmed}”已被使用。`;
   }
   return undefined;
 }

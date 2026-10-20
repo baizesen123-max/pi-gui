@@ -142,7 +142,7 @@ export function useWorkspaceMenu(params: UseWorkspaceMenuParams): WorkspaceMenuS
 
   const removeWorkspace = (workspace: WorkspaceRecord) => {
     const confirmed = window.confirm(
-      `Remove ${workspace.name} from pi-gui? This will not delete any files.`,
+      `移除 ${workspace.name} 从 pi-gui 中移除？此操作不会删除文件。`,
     );
     setWorkspaceMenuId(null);
     setWorkspaceRenameId(null);
@@ -173,9 +173,7 @@ export function useWorkspaceMenu(params: UseWorkspaceMenuParams): WorkspaceMenuS
   };
 
   const removeWorktree = (workspaceId: string, worktree: WorktreeRecord) => {
-    const confirmed = window.confirm(
-      `Remove worktree ${worktree.name}? This removes the git worktree from disk.`,
-    );
+    const confirmed = window.confirm(`移除工作树 ${worktree.name}？这会从磁盘移除 Git 工作树。`);
     if (!confirmed || !api) {
       return;
     }

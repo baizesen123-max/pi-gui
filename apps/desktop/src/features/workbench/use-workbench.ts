@@ -27,7 +27,7 @@ interface UseWorkbenchOptions {
 }
 
 let saveSequence = 0;
-const SAVE_ERROR = "Couldn't save tool tabs. They are kept in this window.";
+const SAVE_ERROR = "工具标签未能保存，仍保留在当前窗口中。";
 
 function targetKey(target: SessionRef): string {
   return JSON.stringify([target.workspaceId, target.sessionId]);
