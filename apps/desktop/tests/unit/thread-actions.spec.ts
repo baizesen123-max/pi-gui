@@ -46,11 +46,11 @@ function titles(actions: readonly { readonly title: string }[]): string[] {
 test("an open thread lists rename, pin, archive, scheduled task and copy with shortcut hints", () => {
   const actions = buildThreadActions({ workspaceId: "ws", session: session() }, handlers("darwin"));
   expect(titles(actions)).toEqual([
-    "Rename thread",
-    "Pin thread",
-    "Archive thread",
-    "Add scheduled task…",
-    "Copy session ID",
+    "重命名对话",
+    "置顶对话",
+    "归档对话",
+    "添加定时任务…",
+    "复制会话标识",
   ]);
   expect(actions.find((action) => action.id === "rename-thread")?.hint).toBe("⇧⌘R");
   expect(actions.find((action) => action.id === "archive-thread")?.hint).toBe("⇧⌘A");
@@ -65,12 +65,12 @@ test("state changes the list: pinned, unseen, scheduled and archived threads", (
     recorder,
   );
   expect(titles(actions)).toEqual([
-    "Rename thread",
-    "Unpin thread",
-    "Archive thread",
-    "Mark as read",
-    "Edit scheduled task…",
-    "Copy session ID",
+    "重命名对话",
+    "取消置顶对话",
+    "归档对话",
+    "标为已读",
+    "编辑定时任务…",
+    "复制会话标识",
   ]);
   actions.find((action) => action.id === "pin-thread")?.run();
   expect(recorder.calls).toEqual(["pin:false"]);
@@ -79,11 +79,6 @@ test("state changes the list: pinned, unseen, scheduled and archived threads", (
     { workspaceId: "ws", session: session({ archivedAt: "x" }) },
     handlers("linux"),
   );
-  expect(titles(archived)).toEqual([
-    "Rename thread",
-    "Restore thread",
-    "Add scheduled task…",
-    "Copy session ID",
-  ]);
+  expect(titles(archived)).toEqual(["重命名对话", "恢复对话", "添加定时任务…", "复制会话标识"]);
   expect(archived.some((action) => action.id === "archive-thread")).toBe(false);
 });

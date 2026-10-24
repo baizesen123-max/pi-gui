@@ -144,7 +144,9 @@ test("the file limit preserves existing references and reports blocked appends d
   } as const;
   const blocked = applyWorkbenchActions(full, [action]);
   expect(blocked.view).toBe(full);
-  expect(blocked.error).toContain("Close a file tab");
+  expect(blocked.error).toBe(
+    `当前已打开 ${MAX_WORKBENCH_FILE_TABS} 个文件标签，请先关闭一个再打开新文件。`,
+  );
   expect(restoreWorkbenchView(initial, full, [action])).toEqual(blocked);
   expect(decodeTaskWorkbenchTemplate(blocked.view)).toEqual(full);
   const existing = applyWorkbenchActions(full, [
