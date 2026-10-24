@@ -491,6 +491,9 @@ export class DesktopAppStore {
         workspaces: this.state.workspaces,
         orchestrationChildren: this.state.orchestrationChildren,
       }),
+      archiveCompletedSession: async (ref) => {
+        await this.workspaceOwner.archiveSession(ref, true);
+      },
       replaceOrchestrationChildren: (children) => {
         this.state = { ...this.state, orchestrationChildren: [...children] };
       },
@@ -1236,6 +1239,11 @@ export class DesktopAppStore {
 
   listThreadsToolResult(parentRef: SessionRef) {
     return this.orchestrationOwner.listThreadsToolResult(parentRef);
+  }
+
+  async archiveChildThreadsToolResult(parentRef: SessionRef, threadIds: readonly string[]) {
+    await this.initialize();
+    return this.orchestrationOwner.archiveChildThreadsToolResult(parentRef, threadIds);
   }
 
   async readThreadToolResult(parentRef: SessionRef, threadId: string) {

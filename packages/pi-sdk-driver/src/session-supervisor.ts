@@ -952,6 +952,42 @@ export class SessionSupervisor {
     await this.updateArchivedState(sessionRef, nowIso());
   }
 
+  /** Opt-in guard for agent-requested archiving; never stops or drains a session. */
+  async archiveCompletedSession(sessionRef: SessionRef): Promise<void> {
+    const record = await this.ensureRecord(sessionRef);
+    const session = this.requireSession(record);
+    if (
+      isRecordBusy(record) ||
+      record.status !== "idle" ||
+      record.queuedMessages.length > 0 ||
+      record.queuedStartScheduled ||
+      record.queuedStartRecheck ||
+      session.pendingMessageCount > 0 ||
+      record.startingQueuedMessage ||
+      record.pendingHostUiRequests.size > 0
+    ) {
+      throw new Error("子任务仍在运行、等待工具或有排队消息，未归档。");
+    }
+    let last: (typeof session.messages)[number] | undefined;
+    for (let i = session.messages.length - 1; i >= 0; i--) {
+      const message = session.messages[i]!;
+      if (
+        message.role === "user" ||
+        message.role === "assistant" ||
+        message.role === "toolResult"
+      ) {
+        last = message;
+        break;
+      }
+    }
+    if (last?.role !== "assistant" || last.stopReason !== "stop") {
+      throw new Error("尚不能确认子任务正常结束，未归档。");
+    }
+    // updateArchivedState sets the loaded record synchronously before its first
+    // await, so a new prompt cannot slip between the busy check and the mutation.
+    await this.updateArchivedState(sessionRef, nowIso());
+  }
+
   async unarchiveSession(sessionRef: SessionRef): Promise<void> {
     await this.updateArchivedState(sessionRef, undefined);
   }

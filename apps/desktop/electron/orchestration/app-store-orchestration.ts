@@ -28,6 +28,7 @@ import type {
 import { latestSessionActivityAt, previewFromTranscript } from "../application/app-store-utils";
 import type { RefreshStateOptions } from "../application/refresh-state-options";
 import {
+  archiveChildThreadsAction,
   createChildThreadAction,
   createChildThreadPromptFromToolOutput,
   createChildThreadToolName,
@@ -42,6 +43,7 @@ import {
   sendMessageToThreadToolName,
 } from "./orchestration-runtime";
 import type {
+  ArchiveChildThreadsToolDetails,
   CreateChildThreadToolDetails,
   ListThreadsToolDetails,
   OrchestrationThreadListEntry,
@@ -85,6 +87,7 @@ interface OrchestrationOwnerHost {
     | { archivedAt?: string; updatedAt: string; title: string; status: string; preview?: string }
     | undefined;
   ensureSessionReady(sessionRef: SessionRef): Promise<SessionSnapshot | undefined>;
+  archiveCompletedSession(sessionRef: SessionRef): Promise<void>;
   ensureSessionSubscription(sessionRef: SessionRef): Promise<void>;
   subscribeToSessionEvents(
     listener: (event: SessionDriverEvent, state: DesktopAppState) => void | Promise<void>,
@@ -110,6 +113,10 @@ interface OrchestrationOwnerHost {
 }
 
 export interface OrchestrationOwner {
+  archiveChildThreadsToolResult(
+    parentRef: SessionRef,
+    threadIds: readonly string[],
+  ): Promise<AgentToolResult<ArchiveChildThreadsToolDetails>>;
   reconcileDueSupervisionLoops(): { readonly changed: boolean };
   cancelChildRunsForParent(parentRef: SessionRef): Promise<void>;
   sendChildThreadFollowUp(input: SendChildThreadFollowUpInput): Promise<DesktopAppState>;
@@ -144,6 +151,8 @@ export interface OrchestrationOwner {
 
 export function createOrchestrationOwner(store: OrchestrationOwnerHost): OrchestrationOwner {
   return {
+    archiveChildThreadsToolResult: (parentRef, threadIds) =>
+      archiveChildThreadsToolResult(store, parentRef, threadIds),
     reconcileDueSupervisionLoops: () => reconcileDueSupervisionLoops(store),
     cancelChildRunsForParent: (parentRef) => cancelChildRunsForParent(store, parentRef),
     sendChildThreadFollowUp: (input) => sendChildThreadFollowUp(store, input),
@@ -601,6 +610,87 @@ async function updateSendMessageToThreadToolOutput(
     event,
     projectionFromToolResult(await sendMessageToThreadToolResult(store, event.sessionRef, request)),
   );
+}
+
+async function archiveChildThreadsToolResult(
+  store: OrchestrationOwnerHost,
+  parentRef: SessionRef,
+  threadIds: readonly string[],
+): Promise<AgentToolResult<ArchiveChildThreadsToolDetails>> {
+  await store.initialize();
+  const archived: string[] = [];
+  const skipped: { threadId: string; reason: string }[] = [];
+  for (const threadId of new Set(threadIds)) {
+    // Resolve within the caller's own children, never the selected UI session or workspace list.
+    const child = store
+      .orchestrationState()
+      .orchestrationChildren.find(
+        (entry) =>
+          entry.parentWorkspaceId === parentRef.workspaceId &&
+          entry.parentSessionId === parentRef.sessionId &&
+          (entry.id === threadId ||
+            entry.childSessionId === threadId ||
+            sessionKey(childSessionRef(entry)) === threadId),
+      );
+    try {
+      if (!child || sessionKey(childSessionRef(child)) === sessionKey(parentRef)) {
+        throw new Error("只能归档当前主任务创建的直接子任务。");
+      }
+      const ref = childSessionRef(child);
+      const session = store.sessionFromState(ref);
+      if (!session) throw new Error("找不到子任务会话，未归档。");
+      if (session.archivedAt) throw new Error("子任务已经归档。");
+      if (session.status !== "idle" || store.getQueuedComposerMessages(ref).length > 0) {
+        throw new Error("子任务仍在运行或有排队消息，未归档。");
+      }
+      if (
+        store
+          .orchestrationState()
+          .orchestrationChildren.some(
+            (entry) =>
+              entry.parentWorkspaceId === ref.workspaceId &&
+              entry.parentSessionId === ref.sessionId &&
+              !store.sessionFromState(childSessionRef(entry))?.archivedAt,
+          )
+      )
+        throw new Error("该子任务还有未归档的下级任务，请先处理下级任务。");
+      const snapshot = await store.ensureSessionReady(ref);
+      if (
+        (snapshot &&
+          (snapshot.status !== "idle" ||
+            snapshot.runningRunId ||
+            snapshot.queuedMessages?.length)) ||
+        store.sessionFromState(ref)?.status !== "idle" ||
+        store.getQueuedComposerMessages(ref).length > 0
+      ) {
+        throw new Error("不能确认子任务空闲且队列为空，未归档。");
+      }
+      // Already-open sessions return no new snapshot from ensureSessionReady.
+      // The driver repeats the busy/completion checks atomically at the write boundary.
+      await store.archiveCompletedSession(ref);
+      updateChildSupervisionLoop(store, child.id, "stop", "已按用户指令归档子任务。");
+      archived.push(child.id);
+    } catch (error) {
+      skipped.push({ threadId, reason: errorMessage(error) });
+    }
+  }
+  if (archived.length) {
+    await store.persistUiState();
+    store.emit();
+  }
+  return {
+    content: [
+      {
+        type: "text",
+        text: [
+          `已归档 ${archived.length} 个子任务（历史和草稿保留，可在侧边栏恢复）。`,
+          ...archived.map((id) => `已归档：${id}`),
+          ...skipped.map((item) => `跳过 ${item.threadId}：${item.reason}`),
+        ].join("\n"),
+      },
+    ],
+    details: { action: archiveChildThreadsAction, archived, skipped },
+  };
 }
 
 function listThreadsToolResult(
@@ -1532,7 +1622,7 @@ function listThreadsForContext(
 
   for (const child of parentChildren) {
     const key = sessionKey(childSessionRef(child));
-    if (entries.has(key)) {
+    if (entries.has(key) || store.sessionFromState(childSessionRef(child))?.archivedAt) {
       continue;
     }
     entries.set(key, {

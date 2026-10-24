@@ -47,6 +47,7 @@ function fixture() {
     workspaceRefFromState: forbidden,
     sessionFromState: (ref) => ({ title: ref.sessionId, status: "running", updatedAt: timestamp }),
     ensureSessionReady: forbiddenAsync,
+    archiveCompletedSession: forbiddenAsync,
     ensureSessionSubscription: forbiddenAsync,
     subscribeToSessionEvents: forbidden,
     updateSessionConfig: forbidden,
