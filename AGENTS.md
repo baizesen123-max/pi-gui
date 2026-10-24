@@ -34,3 +34,10 @@ These rules apply for the full session.
 
 - Root `AGENTS.md` is the repo instruction source of truth.
 - Root `CLAUDE.md` should remain a symlink to `AGENTS.md`.
+
+## 中文维护版本入口
+
+- 项目目标：跟进上游，同时保留中文、并行流式性能修复和主子任务功能。
+- 新对话启动及更新路由：先读 [长期维护流程](docs/local-maintenance.md)，再按影响面读取测试入口；现场 Git 和当前验证证据优先于旧报告。
+- 安全边界：候选在独立副本验证，不得访问真实用户配置、替换安装包、重启现用 pi 或重放任务。
+- 保持 `maintenance/zh-cn` 稳定，验证通过后才推进。当前授权包含候选分支与本地提交；远程推送与安装仍需对应明确授权。
