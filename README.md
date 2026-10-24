@@ -1,5 +1,7 @@
 # pi-gui
 
+> **中文长期维护分支 `maintenance/zh-cn`**：保留中文界面、并行流式性能修复、主子任务层级与受控归档。恢复源码及安全更新步骤见 [维护与恢复说明](docs/local-maintenance.md)。下方原项目 release 和安装说明指向上游版本，不代表包含本分支的调整；请勿直接覆盖正在使用的定制版本。
+
 The desktop app for the [pi](https://github.com/earendil-works/pi) coding agent.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
