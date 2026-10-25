@@ -1,3 +1,4 @@
+import { threadMessageDisplayText } from "../../../contracts/thread-message";
 import { useMemo, useRef } from "react";
 import type {
   SessionTranscriptCustomMessage,
@@ -157,7 +158,7 @@ function TimelineMessage({
     ) : null;
 
   if (item.role === "user") {
-    const body = annotated ? annotated.body : item.text;
+    const body = annotated ? annotated.body : threadMessageDisplayText(item.text);
     return (
       <article className="timeline-item timeline-item--user" ref={articleRef}>
         <div className="timeline-item__user-stack">

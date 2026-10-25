@@ -419,3 +419,64 @@ await test("a follow-up sent during a queue change is delivered with the queued 
     ["A", "B", "X", "first"],
   );
 });
+
+await test("atomic mailbox additions and cancellation preserve concurrent queue entries", async (t) => {
+  const app = await setUp(t);
+  let release!: () => void;
+  modelGate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  t.after(() => {
+    release();
+    modelGate = undefined;
+  });
+  const first = app.driver.sendUserMessage(app.ref, { text: "original" });
+  while (app.lastSnapshot()?.status !== "running")
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  const now = new Date().toISOString();
+  const mail = (id: string) => ({
+    id,
+    text: id,
+    mode: "followUp" as const,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await Promise.all([
+    app.driver.enqueueMessage(app.ref, mail("mail-a")),
+    app.driver.enqueueMessage(app.ref, mail("human-b")),
+  ]);
+  assert.deepEqual(
+    app.lastSnapshot()?.queuedMessages?.map((m) => m.id),
+    ["mail-a", "human-b"],
+  );
+  assert.equal(await app.driver.cancelQueuedMessage(app.ref, "mail-a"), true);
+  assert.equal(await app.driver.cancelQueuedMessage(app.ref, "nonexistent"), false);
+  assert.equal(app.lastSnapshot()?.status, "running");
+  assert.deepEqual(
+    app.lastSnapshot()?.queuedMessages?.map((m) => m.id),
+    ["human-b"],
+  );
+  release();
+  modelGate = undefined;
+  await first;
+  await app.waitForRuns(2);
+  assert.deepEqual(app.turns(), ["original", "-", "human-b", "-"]);
+  assert.equal(await app.driver.cancelQueuedMessage(app.ref, "human-b"), false);
+});
+
+await test("mailbox enqueue on idle starts once and duplicate ID does not replay", async (t) => {
+  const app = await setUp(t);
+  const now = new Date().toISOString();
+  const mail = {
+    id: "stable-mail",
+    text: "cross-project message",
+    mode: "followUp" as const,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await app.driver.enqueueMessage(app.ref, mail);
+  await app.waitForRuns(1);
+  await app.driver.enqueueMessage(app.ref, mail);
+  await app.waitForRuns(1);
+  assert.deepEqual(app.turns(), ["cross-project message", "-"]);
+});

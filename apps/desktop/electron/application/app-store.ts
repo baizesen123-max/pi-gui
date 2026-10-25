@@ -476,6 +476,7 @@ export class DesktopAppStore {
     });
 
     this.orchestrationOwner = createOrchestrationOwner({
+      threadMessagesFile: join(options.userDataDir, "thread-messages.json"),
       driver: this.driver,
       initialize: () => this.initialize(),
       orchestrationState: () => ({
@@ -1227,8 +1228,8 @@ export class DesktopAppStore {
     return this.orchestrationOwner.createChildThreadToolResult(parentRef, input);
   }
 
-  listThreadsToolResult(parentRef: SessionRef) {
-    return this.orchestrationOwner.listThreadsToolResult(parentRef);
+  listThreadsToolResult(parentRef: SessionRef, workspace?: string) {
+    return this.orchestrationOwner.listThreadsToolResult(parentRef, workspace);
   }
 
   async readThreadToolResult(parentRef: SessionRef, threadId: string) {
@@ -1236,9 +1237,19 @@ export class DesktopAppStore {
     return this.orchestrationOwner.readThreadToolResult(parentRef, threadId);
   }
 
+  async threadMessageToolResult(ref: SessionRef, id: string, cancel: boolean) {
+    await this.initialize();
+    return this.orchestrationOwner.threadMessageToolResult(ref, id, cancel);
+  }
+
   async sendMessageToThreadToolResult(
     parentRef: SessionRef,
-    input: { readonly threadId: string; readonly message: string },
+    input: {
+      readonly threadId: string;
+      readonly message: string;
+      readonly signal?: AbortSignal;
+      readonly userRequest?: string;
+    },
   ) {
     await this.initialize();
     return this.orchestrationOwner.sendMessageToThreadToolResult(parentRef, input);
@@ -3496,7 +3507,11 @@ export class DesktopAppStore {
 
       if (event.type === "runFailed") {
         this.sessionState.sessionErrorsBySession.set(key, event.error.message);
-      } else if (event.type === "runCompleted" || event.type === "sessionClosed") {
+      } else if (
+        event.type === "runCompleted" ||
+        event.type === "sessionClosed" ||
+        event.type === "queuedMessageStarted"
+      ) {
         this.sessionState.sessionErrorsBySession.delete(key);
       }
 

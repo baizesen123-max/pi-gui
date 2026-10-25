@@ -1,3 +1,10 @@
+import {
+  THREAD_MESSAGE_PREFIX,
+  ThreadMailbox,
+  assertContactInstruction,
+  isThreadMessageTurn,
+} from "./thread-mailbox";
+import { acknowledgeThreadMessage } from "./thread-message-delivery";
 import { randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -67,9 +74,13 @@ interface OrchestrationStateView {
   readonly orchestrationChildren: readonly OrchestrationChildThread[];
 }
 
-type OrchestrationDriver = Pick<PiSdkDriver, "cancelCurrentRun" | "createSession">;
+type OrchestrationDriver = Pick<
+  PiSdkDriver,
+  "cancelCurrentRun" | "createSession" | "enqueueMessage" | "cancelQueuedMessage"
+>;
 
 interface OrchestrationOwnerHost {
+  readonly threadMessagesFile: string;
   readonly driver: OrchestrationDriver;
   initialize(): Promise<void>;
   orchestrationState(): OrchestrationStateView;
@@ -110,6 +121,11 @@ interface OrchestrationOwnerHost {
 }
 
 export interface OrchestrationOwner {
+  threadMessageToolResult(
+    parentRef: SessionRef,
+    id: string,
+    cancel: boolean,
+  ): Promise<AgentToolResult<SendMessageToThreadToolDetails>>;
   reconcileDueSupervisionLoops(): { readonly changed: boolean };
   cancelChildRunsForParent(parentRef: SessionRef): Promise<void>;
   sendChildThreadFollowUp(input: SendChildThreadFollowUpInput): Promise<DesktopAppState>;
@@ -131,19 +147,49 @@ export interface OrchestrationOwner {
     parentRef: SessionRef,
     input: { readonly prompt: string; readonly toolCallId: string },
   ): Promise<AgentToolResult<CreateChildThreadToolDetails>>;
-  listThreadsToolResult(parentRef: SessionRef): AgentToolResult<ListThreadsToolDetails>;
+  listThreadsToolResult(
+    parentRef: SessionRef,
+    workspace?: string,
+  ): AgentToolResult<ListThreadsToolDetails>;
   readThreadToolResult(
     parentRef: SessionRef,
     threadId: string,
   ): Promise<AgentToolResult<ReadThreadToolDetails>>;
   sendMessageToThreadToolResult(
     parentRef: SessionRef,
-    input: { readonly threadId: string; readonly message: string },
+    input: {
+      readonly threadId: string;
+      readonly message: string;
+      readonly signal?: AbortSignal;
+      readonly userRequest?: string;
+    },
   ): Promise<AgentToolResult<SendMessageToThreadToolDetails>>;
 }
 
 export function createOrchestrationOwner(store: OrchestrationOwnerHost): OrchestrationOwner {
+  const mailbox = new ThreadMailbox(store.threadMessagesFile, {
+    ...store,
+    enqueueMessage: (ref, message) => store.driver.enqueueMessage(ref, message),
+    cancelQueuedMessage: (ref, id) => store.driver.cancelQueuedMessage(ref, id),
+  });
   return {
+    threadMessageToolResult: async (ref, id, cancel) => {
+      try {
+        const receipt = await (cancel ? mailbox.cancel(ref, id) : mailbox.inspect(ref, id));
+        return {
+          content: [{ type: "text", text: JSON.stringify(receipt) }],
+          details: {
+            action: sendMessageToThreadAction,
+            threadId: receipt.target.sessionId,
+            message: "",
+            messageId: receipt.id,
+            receipt,
+          },
+        };
+      } catch (error) {
+        return sendMessageToThreadErrorResult("", "", errorMessage(error));
+      }
+    },
     reconcileDueSupervisionLoops: () => reconcileDueSupervisionLoops(store),
     cancelChildRunsForParent: (parentRef) => cancelChildRunsForParent(store, parentRef),
     sendChildThreadFollowUp: (input) => sendChildThreadFollowUp(store, input),
@@ -161,10 +207,11 @@ export function createOrchestrationOwner(store: OrchestrationOwnerHost): Orchest
       hasOrchestrationParentSession(store.orchestrationState().orchestrationChildren, sessionRef),
     createChildThreadToolResult: (parentRef, input) =>
       createChildThreadToolResult(store, parentRef, input),
-    listThreadsToolResult: (parentRef) => listThreadsToolResult(store, parentRef),
+    listThreadsToolResult: (parentRef, workspace) =>
+      listThreadsToolResult(store, parentRef, workspace),
     readThreadToolResult: (parentRef, threadId) => readThreadToolResult(store, parentRef, threadId),
     sendMessageToThreadToolResult: (parentRef, input) =>
-      sendMessageToThreadToolResult(store, parentRef, input),
+      sendMessageToThreadToolResult(store, parentRef, input, mailbox),
   };
 }
 
@@ -606,9 +653,10 @@ async function updateSendMessageToThreadToolOutput(
 function listThreadsToolResult(
   store: OrchestrationOwnerHost,
   parentRef: SessionRef,
+  workspace?: string,
 ): AgentToolResult<ListThreadsToolDetails> {
   store.replaceOrchestrationChildren(projectOrchestrationChildren(store));
-  const threads = listThreadsForContext(store, parentRef);
+  const threads = listThreadsForContext(store, parentRef, workspace);
   return {
     content: [{ type: "text", text: formatThreadList(threads) }],
     details: {
@@ -623,7 +671,7 @@ async function readThreadToolResult(
   parentRef: SessionRef,
   threadId: string,
 ): Promise<AgentToolResult<ReadThreadToolDetails>> {
-  const target = resolveThreadTarget(store, parentRef, threadId);
+  const target = resolveThreadTarget(store, parentRef, threadId, true);
   if (!target) {
     return readThreadErrorResult(threadId, `Unknown thread: ${threadId}`);
   }
@@ -661,9 +709,28 @@ async function readThreadToolResult(
 async function sendMessageToThreadToolResult(
   store: OrchestrationOwnerHost,
   parentRef: SessionRef,
-  input: { readonly threadId: string; readonly message: string },
+  input: {
+    readonly threadId: string;
+    readonly message: string;
+    readonly signal?: AbortSignal;
+    readonly userRequest?: string;
+  },
+  mailbox: ThreadMailbox | undefined = undefined,
 ): Promise<AgentToolResult<SendMessageToThreadToolDetails>> {
-  const target = resolveThreadTarget(store, parentRef, input.threadId);
+  if (hasOrchestrationChildSession(store.orchestrationState().orchestrationChildren, parentRef)) {
+    return sendMessageToThreadErrorResult(
+      input.threadId,
+      input.message,
+      "Child threads must report in their own conversation for the parent to collect; they cannot start other threads.",
+    );
+  }
+  if (isThreadMessageTurn(store.transcriptFor(parentRef)))
+    return sendMessageToThreadErrorResult(
+      input.threadId,
+      input.message,
+      "Incoming thread turns cannot automatically reply or forward. Report here for the sender to read.",
+    );
+  const target = resolveThreadTarget(store, parentRef, input.threadId, true);
   if (!target) {
     return sendMessageToThreadErrorResult(
       input.threadId,
@@ -672,10 +739,54 @@ async function sendMessageToThreadToolResult(
     );
   }
 
-  await store.submitComposerToSession(target.sessionRef, input.message, [], {
-    deliverAs: "followUp",
-    allowCommands: false,
-  });
+  if (target.sessionRef.workspaceId !== parentRef.workspaceId) {
+    try {
+      if (!mailbox)
+        throw new Error(
+          "Cross-project messages require the direct delivery tool; tool output cannot be replayed.",
+        );
+      const workspace = store.workspaceRefFromState(target.sessionRef.workspaceId);
+      const humanMessageId = assertContactInstruction(
+        store.transcriptFor(parentRef),
+        input.userRequest,
+        [target.sessionRef.sessionId, target.sessionRef.workspaceId, workspace?.displayName ?? ""],
+      );
+      const receipt = await mailbox.send(
+        parentRef,
+        target.sessionRef,
+        input.message,
+        humanMessageId,
+        input.signal,
+      );
+      return {
+        content: [{ type: "text", text: JSON.stringify(receipt) }],
+        details: {
+          action: sendMessageToThreadAction,
+          threadId: input.threadId,
+          message: input.message,
+          workspaceId: target.sessionRef.workspaceId,
+          sessionId: target.sessionRef.sessionId,
+          messageId: receipt.id,
+          receipt,
+        },
+      };
+    } catch (error) {
+      return sendMessageToThreadErrorResult(input.threadId, input.message, errorMessage(error));
+    }
+  }
+  let status: "sent" | "queued";
+  try {
+    status = await acknowledgeThreadMessage(
+      store,
+      target.sessionRef,
+      target.child
+        ? input.message
+        : `${THREAD_MESSAGE_PREFIX}${randomUUID()}]\nFrom thread: ${parentRef.sessionId}\nReport here for the sender to read. Do not automatically reply or forward.\n\n${input.message}`,
+      input.signal,
+    );
+  } catch (error) {
+    return sendMessageToThreadErrorResult(input.threadId, input.message, errorMessage(error));
+  }
   if (target.child) {
     updateChildSupervisionLoop(
       store,
@@ -687,7 +798,6 @@ async function sendMessageToThreadToolResult(
   }
 
   const queuedMessages = store.getQueuedComposerMessages(target.sessionRef);
-  const status = queuedMessages.length > 0 ? "queued" : "sent";
   const details: SendMessageToThreadToolDetails = {
     action: sendMessageToThreadAction,
     threadId: input.threadId,
@@ -1422,7 +1532,11 @@ function isFinalThreadToolDetails(details: Record<string, unknown>): boolean {
     return Array.isArray(details.messages);
   }
   if (details.action === sendMessageToThreadAction) {
-    return details.status === "queued" || details.status === "sent";
+    return (
+      (typeof details.messageId === "string" && isRecord(details.receipt)) ||
+      details.status === "queued" ||
+      details.status === "sent"
+    );
   }
   return false;
 }
@@ -1454,6 +1568,18 @@ function detailFromThreadToolDetails(details: Readonly<Record<string, unknown>>)
     return `Read thread: ${title}`;
   }
   if (details.action === sendMessageToThreadAction) {
+    if (isRecord(details.receipt)) {
+      const labels: Record<string, string> = {
+        submitting: "Confirming delivery",
+        queued: "Queued",
+        running: "Running",
+        turn_finished: "Turn finished; verify result",
+        failed: "Failed",
+        cancelled: "Pending message cancelled",
+        unknown: "Delivery unverified",
+      };
+      return `Thread message: ${labels[String(details.receipt.status)] ?? "Unverified"}`;
+    }
     const verb = details.status === "queued" ? "Queued" : "Sent";
     return `${verb} message to thread: ${typeof details.threadId === "string" ? details.threadId : "unknown"}`;
   }
@@ -1486,6 +1612,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function listThreadsForContext(
   store: OrchestrationOwnerHost,
   parentRef: SessionRef,
+  scope?: string,
 ): readonly ThreadListEntry[] {
   const entries = new Map<string, ThreadListEntry>();
   const state = store.orchestrationState();
@@ -1498,15 +1625,28 @@ function listThreadsForContext(
     parentChildren.map((child) => [sessionKey(childSessionRef(child)), child] as const),
   );
 
+  const scoped = scope && !hasOrchestrationChildSession(state.orchestrationChildren, parentRef);
   for (const workspace of state.workspaces) {
+    if (scoped && scope !== "*" && workspace.id !== scope && workspace.name !== scope) continue;
     if (
+      !scoped &&
       workspace.id !== parentRef.workspaceId &&
       !parentChildren.some((child) => child.childWorkspaceId === workspace.id)
     ) {
       continue;
     }
     for (const session of workspace.sessions) {
-      if (session.archivedAt) {
+      if (
+        session.archivedAt ||
+        (workspace.id !== parentRef.workspaceId &&
+          hasOrchestrationChildSession(state.orchestrationChildren, {
+            workspaceId: workspace.id,
+            sessionId: session.id,
+          }) &&
+          !parentChildren.some(
+            (c) => c.childWorkspaceId === workspace.id && c.childSessionId === session.id,
+          ))
+      ) {
         continue;
       }
       const key = sessionKey({ workspaceId: workspace.id, sessionId: session.id });
@@ -1514,6 +1654,7 @@ function listThreadsForContext(
       entries.set(key, {
         threadId: child?.id ?? session.id,
         workspaceId: workspace.id,
+        workspaceName: workspace.name,
         sessionId: session.id,
         title: child?.title ?? session.title,
         status: child?.status ?? session.status,
@@ -1524,13 +1665,16 @@ function listThreadsForContext(
             ? "current"
             : "workspace",
         updatedAt: child?.updatedAt ?? session.updatedAt,
-        preview: child?.latestTranscript ?? session.preview,
+        preview:
+          scoped && workspace.id !== parentRef.workspaceId
+            ? ""
+            : (child?.latestTranscript ?? session.preview),
         ...(child ? { childThreadId: child.id } : {}),
       });
     }
   }
 
-  for (const child of parentChildren) {
+  for (const child of scoped ? [] : parentChildren) {
     const key = sessionKey(childSessionRef(child));
     if (entries.has(key)) {
       continue;
@@ -1590,13 +1734,17 @@ function resolveThreadTarget(
   store: OrchestrationOwnerHost,
   parentRef: SessionRef,
   threadId: string,
+  crossProject = false,
 ): ResolvedThreadTarget | undefined {
   const normalized = threadId.trim();
   if (!normalized) {
     return undefined;
   }
 
-  const visibleThread = listThreadsForContext(store, parentRef).find(
+  const visibleThread = [
+    ...listThreadsForContext(store, parentRef),
+    ...(crossProject ? listThreadsForContext(store, parentRef, "*") : []),
+  ].find(
     (thread) =>
       thread.threadId === normalized ||
       thread.sessionId === normalized ||
@@ -1629,7 +1777,7 @@ function formatThreadList(threads: readonly ThreadListEntry[]): string {
     "Visible threads:",
     ...threads.map(
       (thread) =>
-        `- ${thread.threadId} (${thread.relationship}, ${thread.status}): ${thread.title}` +
+        `- ${thread.threadId} [${thread.workspaceName ?? thread.workspaceId}; ${thread.workspaceId}] (${thread.relationship}, ${thread.status}): ${thread.title}` +
         (thread.supervisionGate
           ? ` [gate=${thread.supervisionGate}: ${thread.supervisionReason ?? "monitoring"}]`
           : "") +
