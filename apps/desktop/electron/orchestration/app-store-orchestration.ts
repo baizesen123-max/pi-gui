@@ -693,8 +693,21 @@ async function archiveFinishedChild(
   child: OrchestrationChildThread,
 ): Promise<void> {
   const ref = childSessionRef(child);
-  if (!store.sessionFromState(ref)) throw new Error("Child thread was not found.");
-  if (store.sessionFromState(ref)?.archivedAt) throw new Error("Child thread is already archived.");
+  assertArchivableChild(store, ref);
+  await store.ensureSessionReady(ref);
+  // Opening a cold child awaits; the user may have restored a grandchild or archived the
+  // child meanwhile, so every check runs again once the session is ready.
+  assertArchivableChild(store, ref);
+  const unfinished = unfinishedChildReason(store, ref);
+  if (unfinished) throw new Error(`${unfinished}; it was not archived.`);
+  // The app's copy of the outcome can trail the runtime; the driver re-checks it at the write.
+  await store.archiveIdleSession(ref, { lastRunOutcome: "completed" });
+}
+
+function assertArchivableChild(store: OrchestrationOwnerHost, ref: SessionRef): void {
+  const session = store.sessionFromState(ref);
+  if (!session) throw new Error("Child thread was not found.");
+  if (session.archivedAt) throw new Error("Child thread is already archived.");
   const openDescendant = store
     .orchestrationChildren()
     .some(
@@ -704,11 +717,6 @@ async function archiveFinishedChild(
         !store.sessionFromState(childSessionRef(entry))?.archivedAt,
     );
   if (openDescendant) throw new Error("This child has its own unarchived child threads.");
-  await store.ensureSessionReady(ref);
-  const unfinished = unfinishedChildReason(store, ref);
-  if (unfinished) throw new Error(`${unfinished}; it was not archived.`);
-  // The app's copy of the outcome can trail the runtime; the driver re-checks it at the write.
-  await store.archiveIdleSession(ref, { lastRunOutcome: "completed" });
 }
 
 /**
