@@ -2036,6 +2036,9 @@ export class SessionSupervisor {
         await this.disposeRecordRuntime(existingTarget);
       }
       this.records.delete(previousKey);
+      // The session left is no longer held here; once its mark is saved, the catalog decides.
+      if (!this.unsavedStoppedReplies.has(previousKey))
+        this.latestStoppedReplies.delete(previousKey);
       record.ref = nextRef;
       record.stoppedReplyId = targetStoppedReplyId;
       this.records.set(nextKey, record);
