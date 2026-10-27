@@ -128,6 +128,22 @@ export default [
       ],
     },
   },
+  {
+    // childThreadLinks must change with orchestrationChildren, or the sidebar tree goes
+    // stale. Set children only through orchestrationChildrenState(), which sets both.
+    files: ["apps/desktop/electron/application/app-store.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "AssignmentExpression[left.property.name='state'] ObjectExpression > Property[key.name='orchestrationChildren']",
+          message:
+            "Spread this.orchestrationChildrenState(children) instead, so childThreadLinks stays in step.",
+        },
+      ],
+    },
+  },
   typedProject(["apps/desktop/src/**/*.{ts,tsx,mts,cts}"], "apps/desktop/tsconfig.json"),
   typedProject(
     ["apps/desktop/electron/**/*.{ts,tsx,mts,cts}"],

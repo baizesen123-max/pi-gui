@@ -220,9 +220,16 @@ export class DesktopAppStore {
    * Coalesce token-level assistantDelta / redundant sessionUpdated publishes so
    * the renderer does not apply a full DesktopAppState snapshot per token.
    */
-  private readonly streamingUiPublisher = new StreamingUiPublisher((sessionRef) => {
+  private readonly streamingUiPublisher = new StreamingUiPublisher((sessionRefs) => {
+    try {
+      this.refreshOrchestrationForSessions(sessionRefs);
+    } catch (error) {
+      console.error("[app-store] failed to refresh orchestration children", error);
+    }
     this.emit();
-    this.publishSelectedTranscriptFor(sessionRef);
+    if (sessionRefs.some((sessionRef) => this.isSelectedSession(sessionRef))) {
+      this.publishSelectedTranscript();
+    }
   });
   /** Per-workspace serial queue so focus reconciles never overlap or race. */
   private readonly externalChangeQueues = new Map<string, Promise<void>>();
@@ -2569,7 +2576,6 @@ export class DesktopAppStore {
         ),
         extensionFlagsByWorkspace: mapToRecord(this.extensionFlagsByWorkspace),
         extensionFlagsBySession: mapToRecord(this.sessionState.extensionFlagsBySession),
-        orchestrationChildren: this.state.orchestrationChildren,
         lastViewedAtBySession: mapToRecord(this.sessionState.lastViewedAtBySession),
         lastInteractedAtBySession: mapToRecord(this.sessionState.lastInteractedAtBySession),
         pinnedAtBySession: mapToRecord(this.sessionState.pinnedAtBySession),
@@ -3443,6 +3449,7 @@ export class DesktopAppStore {
     // schedules a coalesced emit. Token-level assistantDelta / redundant
     // sessionUpdated ticks must not publish a full app snapshot per token.
     // First running tick for a new runningRunId still emits immediately.
+    const deferPublish = this.streamingUiPublisher.shouldDefer(event);
     try {
       const knownSession = this.sessionFromState(event.sessionRef);
       const shouldFollowSessionMutation =
@@ -3568,17 +3575,10 @@ export class DesktopAppStore {
       }
       this.markSessionViewedIfActivelyViewed(event.sessionRef);
       this.state = this.syncDerivedSessionState(this.state, event.sessionRef);
-      if (
-        this.orchestrationOwner.hasOrchestrationChildSession(event.sessionRef) ||
-        this.orchestrationOwner.hasOrchestrationParentSession(event.sessionRef)
-      ) {
-        this.state = {
-          ...this.state,
-          ...this.orchestrationChildrenState(
-            this.orchestrationOwner.projectOrchestrationChildrenForSession(event.sessionRef),
-          ),
-        };
-        this.scheduleOrchestrationSupervision();
+      // Defer derived orchestration work as well as IPC. Otherwise token events
+      // still rescan parent evidence before the publisher coalesces them.
+      if (!deferPublish) {
+        this.refreshOrchestrationForSessions([event.sessionRef]);
       }
       if (shouldFollowSessionMutation && event.type !== "sessionClosed") {
         this.applyFastSessionSelection(event.sessionRef);
@@ -3598,7 +3598,7 @@ export class DesktopAppStore {
     } catch (error) {
       console.error(`[app-store] failed to apply session event ${event.type} for ${key}`, error);
     } finally {
-      if (this.streamingUiPublisher.shouldDefer(event)) {
+      if (deferPublish) {
         this.streamingUiPublisher.schedule(event.sessionRef);
         await this.emitSessionEvent(event, this.state);
       } else {
@@ -3609,6 +3609,24 @@ export class DesktopAppStore {
       }
       this.streamingUiPublisher.observe(event);
     }
+  }
+
+  private refreshOrchestrationForSessions(sessionRefs: readonly SessionRef[]): void {
+    const members = sessionRefs.filter(
+      (sessionRef) =>
+        this.orchestrationOwner.hasOrchestrationChildSession(sessionRef) ||
+        this.orchestrationOwner.hasOrchestrationParentSession(sessionRef),
+    );
+    if (members.length === 0) {
+      return;
+    }
+    this.state = {
+      ...this.state,
+      ...this.orchestrationChildrenState(
+        this.orchestrationOwner.projectOrchestrationChildrenForSessions(members),
+      ),
+    };
+    this.scheduleOrchestrationSupervision();
   }
 
   workspaceRefFromState(workspaceId: string): WorkspaceRef | undefined {
