@@ -74,8 +74,8 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.archiveSession(sessionRef);
   }
 
-  archiveCompletedSession(sessionRef: SessionRef): Promise<void> {
-    return this.supervisor.archiveCompletedSession(sessionRef);
+  archiveSessionIfIdle(sessionRef: SessionRef): Promise<void> {
+    return this.supervisor.archiveSessionIfIdle(sessionRef);
   }
 
   unarchiveSession(sessionRef: SessionRef): Promise<void> {

@@ -50,10 +50,10 @@ function fixture() {
   return { supervisor, record, writes, emitted };
 }
 
-await test("agent archive preserves history and uses the normal archive/restore persistence path", async () => {
+await test("idle archive preserves history and uses the normal archive/restore persistence path", async () => {
   const f = fixture();
   const history = f.record.session.messages;
-  await f.supervisor.archiveCompletedSession(f.record.ref);
+  await f.supervisor.archiveSessionIfIdle(f.record.ref);
   assert.ok(f.record.archivedAt);
   assert.equal(f.writes.length, 1);
   assert.deepEqual(f.emitted, ["sessionUpdated"]);
@@ -99,39 +99,25 @@ const busyCases: Record<string, (record: ReturnType<typeof fixture>["record"]) =
   },
 };
 for (const [name, mutate] of Object.entries(busyCases)) {
-  await test(`agent archive refuses ${name} without a write or cancellation`, async () => {
+  await test(`idle archive refuses ${name} without a write or cancellation`, async () => {
     const f = fixture();
     mutate(f.record);
-    await assert.rejects(f.supervisor.archiveCompletedSession(f.record.ref));
+    await assert.rejects(f.supervisor.archiveSessionIfIdle(f.record.ref));
     assert.equal(f.record.archivedAt, undefined);
     assert.equal(f.writes.length, 0);
     assert.equal(f.emitted.length, 0);
   });
 }
-for (const stopReason of ["aborted", "error", "length", "toolUse"]) {
-  await test(`agent archive refuses a ${stopReason} assistant response`, async () => {
-    const f = fixture();
-    f.record.session.messages[0]!.stopReason = stopReason;
-    await assert.rejects(f.supervisor.archiveCompletedSession(f.record.ref), /finished normally/);
-    assert.equal(f.writes.length, 0);
-  });
-}
-await test("agent archive checks after awaiting session loading, not an earlier idle snapshot", async () => {
+await test("idle archive checks after awaiting session loading, not an earlier idle snapshot", async () => {
   const f = fixture();
-  const promise = f.supervisor.archiveCompletedSession(f.record.ref);
+  const promise = f.supervisor.archiveSessionIfIdle(f.record.ref);
   f.record.promptStarting = true;
   await assert.rejects(promise);
   assert.equal(f.writes.length, 0);
 });
-await test("agent archive rejects never-started and unfinished conversations", async () => {
-  for (const messages of [
-    [],
-    [{ role: "user", content: "unfinished", stopReason: "" }],
-    [{ role: "toolResult", content: "result", stopReason: "" }],
-  ]) {
-    const f = fixture();
-    f.record.session.messages = messages;
-    await assert.rejects(f.supervisor.archiveCompletedSession(f.record.ref));
-    assert.equal(f.writes.length, 0);
-  }
+await test("idle archive leaves the finished-work decision to the caller", async () => {
+  const f = fixture();
+  f.record.session.messages = [{ role: "assistant", stopReason: "aborted", content: "partial" }];
+  await f.supervisor.archiveSessionIfIdle(f.record.ref);
+  assert.ok(f.record.archivedAt);
 });
