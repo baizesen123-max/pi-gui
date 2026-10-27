@@ -209,16 +209,20 @@ test("parallel children: main-process event-loop lag while N children stream", a
       .poll(() => server.finished(), { timeout: 120_000, intervals: [100] })
       .toBeGreaterThanOrEqual(CHILDREN);
     const serverMs = Date.now() - started;
-    // Sample until the app has applied every token, not just until the server sent them.
+    // Sample until every child completed with its last token applied, so a failed or
+    // truncated run cannot produce a cheaper-looking measurement.
+    const lastWord = `word${TOKENS - 1}`;
     await expect
       .poll(
         async () =>
           (await getDesktopState(window)).orchestrationChildren.filter(
-            (child) => child.status === "running",
+            (child) =>
+              child.status === "complete" &&
+              child.transcript.some((message) => message.text.includes(lastWord)),
           ).length,
         { timeout: 120_000, intervals: [100] },
       )
-      .toBe(0);
+      .toBe(CHILDREN);
     const streamMs = Date.now() - started;
     const sample = await harness.electronApp.evaluate(() => {
       const g = globalThis as unknown as Record<string, unknown>;

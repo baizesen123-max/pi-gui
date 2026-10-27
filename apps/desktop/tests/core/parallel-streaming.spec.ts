@@ -201,6 +201,13 @@ test("24 parallel children keep drafts and final states without per-token full-s
     const second = harness.electronApp.windows().find((candidate) => !existing.has(candidate))!;
     await second.waitForLoadState("domcontentloaded");
     await selectSession(second, active.title);
+    await second.evaluate(() => {
+      const record = globalThis as typeof globalThis & { pushedTranscripts?: string[] };
+      record.pushedTranscripts = [];
+      globalThis.window.piApp?.onSelectedTranscriptChanged((payload) => {
+        record.pushedTranscripts?.push(JSON.stringify(payload));
+      });
+    });
     await emitTestSessionEvents(harness, [
       {
         type: "assistantDelta",
@@ -223,6 +230,18 @@ test("24 parallel children keep drafts and final states without per-token full-s
         callId: "tool-proof",
         text: `progress-${n}`,
       })),
+    ]);
+    // Before toolFinished, only the deferred toolUpdated flush can push the last progress.
+    await expect
+      .poll(() =>
+        second.evaluate(() =>
+          (
+            globalThis as typeof globalThis & { pushedTranscripts?: string[] }
+          ).pushedTranscripts?.some((payload) => payload.includes("progress-39")),
+        ),
+      )
+      .toBe(true);
+    await emitTestSessionEvents(harness, [
       {
         type: "toolFinished",
         sessionRef: active.ref,

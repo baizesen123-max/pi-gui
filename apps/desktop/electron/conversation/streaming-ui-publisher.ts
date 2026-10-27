@@ -100,6 +100,5 @@ export class StreamingUiPublisher {
       this.timer = undefined;
     }
     this.pending.clear();
-    this.trackedRunId.clear();
   }
 }

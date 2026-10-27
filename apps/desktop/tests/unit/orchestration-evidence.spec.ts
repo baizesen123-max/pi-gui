@@ -100,10 +100,10 @@ test("unchanged parent histories are not rescanned while another worker updates"
     },
   ]);
   const ref = { workspaceId: "ws", sessionId: "a" };
-  const first = f.owner.projectOrchestrationChildrenForSession(ref);
+  const first = f.owner.projectOrchestrationChildrenForSessions([ref]);
   expect(first[0]?.evidence.some((e) => e.source === "orchestrator-accepted")).toBe(true);
   const counts = [readsA, readsB];
-  for (let i = 0; i < 100; i++) f.owner.projectOrchestrationChildrenForSession(ref);
+  for (let i = 0; i < 100; i++) f.owner.projectOrchestrationChildrenForSessions([ref]);
   expect([readsA, readsB]).toEqual(counts);
   f.transcripts.set(sessionKey({ workspaceId: "ws", sessionId: "parent-a" }), [
     {
@@ -114,7 +114,7 @@ test("unchanged parent histories are not rescanned while another worker updates"
       text: "orchestrator-accepted: a updated acceptance",
     },
   ]);
-  const next = f.owner.projectOrchestrationChildrenForSession(ref);
+  const next = f.owner.projectOrchestrationChildrenForSessions([ref]);
   expect(next[0]?.evidence.find((e) => e.source === "orchestrator-accepted")?.detail).toBe(
     "updated acceptance",
   );

@@ -121,8 +121,8 @@ export interface OrchestrationOwner {
   projectOrchestrationChildren(
     children?: readonly OrchestrationChildThread[],
   ): readonly OrchestrationChildThread[];
-  projectOrchestrationChildrenForSession(
-    sessionRef: SessionRef,
+  projectOrchestrationChildrenForSessions(
+    sessionRefs: readonly SessionRef[],
   ): readonly OrchestrationChildThread[];
   handleOrchestrationThreadToolResult(
     event: Extract<SessionDriverEvent, { type: "toolFinished" }>,
@@ -153,8 +153,8 @@ export function createOrchestrationOwner(store: OrchestrationOwnerHost): Orchest
     hydrateOrchestrationChildren: () => hydrateOrchestrationChildren(store),
     hydrateVisibleOrchestrationChildren: () => hydrateVisibleOrchestrationChildren(store),
     projectOrchestrationChildren: (children) => projectOrchestrationChildren(store, children),
-    projectOrchestrationChildrenForSession: (sessionRef) =>
-      projectOrchestrationChildrenForSession(store, sessionRef),
+    projectOrchestrationChildrenForSessions: (sessionRefs) =>
+      projectOrchestrationChildrenForSessions(store, sessionRefs),
     handleOrchestrationThreadToolResult: (event) =>
       handleOrchestrationThreadToolResult(store, event),
     hasOrchestrationChildSession: (sessionRef) =>
@@ -717,16 +717,16 @@ function projectOrchestrationChildren(
   );
 }
 
-function projectOrchestrationChildrenForSession(
+function projectOrchestrationChildrenForSessions(
   store: OrchestrationOwnerHost,
-  sessionRef: SessionRef,
+  sessionRefs: readonly SessionRef[],
 ): readonly OrchestrationChildThread[] {
   const now = new Date().toISOString();
   const children = store.orchestrationChildren();
   const parentEvidenceByChild = parentEvidenceIndex(store, children);
+  const keys = new Set(sessionRefs.map(sessionKey));
   return children.map((child) =>
-    child.childWorkspaceId === sessionRef.workspaceId &&
-    child.childSessionId === sessionRef.sessionId
+    child.childSessionId && keys.has(sessionKey(childSessionRef(child)))
       ? projectOrchestrationChild(store, child, now, parentEvidenceByChild.get(child.id) ?? [])
       : child,
   );

@@ -219,8 +219,10 @@ export class DesktopAppStore {
    * the renderer does not apply a full DesktopAppState snapshot per token.
    */
   private readonly streamingUiPublisher = new StreamingUiPublisher((sessionRefs) => {
-    for (const sessionRef of sessionRefs) {
-      this.refreshOrchestrationForSession(sessionRef);
+    try {
+      this.refreshOrchestrationForSessions(sessionRefs);
+    } catch (error) {
+      console.error("[app-store] failed to refresh orchestration children", error);
     }
     this.emit();
     if (sessionRefs.some((sessionRef) => this.isSelectedSession(sessionRef))) {
@@ -3423,6 +3425,7 @@ export class DesktopAppStore {
     // schedules a coalesced emit. Token-level assistantDelta / redundant
     // sessionUpdated ticks must not publish a full app snapshot per token.
     // First running tick for a new runningRunId still emits immediately.
+    const deferPublish = this.streamingUiPublisher.shouldDefer(event);
     try {
       const knownSession = this.sessionFromState(event.sessionRef);
       const shouldFollowSessionMutation =
@@ -3548,8 +3551,8 @@ export class DesktopAppStore {
       this.state = this.syncDerivedSessionState(this.state, event.sessionRef);
       // Defer derived orchestration work as well as IPC. Otherwise token events
       // still rescan parent evidence before the publisher coalesces them.
-      if (!this.streamingUiPublisher.shouldDefer(event)) {
-        this.refreshOrchestrationForSession(event.sessionRef);
+      if (!deferPublish) {
+        this.refreshOrchestrationForSessions([event.sessionRef]);
       }
       if (shouldFollowSessionMutation && event.type !== "sessionClosed") {
         this.applyFastSessionSelection(event.sessionRef);
@@ -3569,7 +3572,7 @@ export class DesktopAppStore {
     } catch (error) {
       console.error(`[app-store] failed to apply session event ${event.type} for ${key}`, error);
     } finally {
-      if (this.streamingUiPublisher.shouldDefer(event)) {
+      if (deferPublish) {
         this.streamingUiPublisher.schedule(event.sessionRef);
         await this.emitSessionEvent(event, this.state);
       } else {
@@ -3582,17 +3585,19 @@ export class DesktopAppStore {
     }
   }
 
-  private refreshOrchestrationForSession(sessionRef: SessionRef): void {
-    if (
-      !this.orchestrationOwner.hasOrchestrationChildSession(sessionRef) &&
-      !this.orchestrationOwner.hasOrchestrationParentSession(sessionRef)
-    ) {
+  private refreshOrchestrationForSessions(sessionRefs: readonly SessionRef[]): void {
+    const members = sessionRefs.filter(
+      (sessionRef) =>
+        this.orchestrationOwner.hasOrchestrationChildSession(sessionRef) ||
+        this.orchestrationOwner.hasOrchestrationParentSession(sessionRef),
+    );
+    if (members.length === 0) {
       return;
     }
     this.state = {
       ...this.state,
       orchestrationChildren:
-        this.orchestrationOwner.projectOrchestrationChildrenForSession(sessionRef),
+        this.orchestrationOwner.projectOrchestrationChildrenForSessions(members),
     };
     this.scheduleOrchestrationSupervision();
   }
