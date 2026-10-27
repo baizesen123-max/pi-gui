@@ -112,6 +112,21 @@ export default [
       ],
     },
   },
+  {
+    // Window state pushes leave orchestrationChildren empty (they carry child
+    // transcripts), so a renderer read would show data only until the next push.
+    files: ["apps/desktop/src/**/*.{ts,tsx,mts,cts}"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "MemberExpression[property.name='orchestrationChildren']",
+          message:
+            "The window never receives orchestrationChildren. Read state.childThreadLinks for the parent/child tree.",
+        },
+      ],
+    },
+  },
   typedProject(["apps/desktop/src/**/*.{ts,tsx,mts,cts}"], "apps/desktop/tsconfig.json"),
   typedProject(
     ["apps/desktop/electron/**/*.{ts,tsx,mts,cts}"],

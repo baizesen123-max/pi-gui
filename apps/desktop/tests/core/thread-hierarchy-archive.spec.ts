@@ -14,7 +14,7 @@ import {
   selectSession,
 } from "../helpers/electron-app";
 
-test("parent hierarchy and scoped archive tool preserve history and Chinese drafts across restart", async ({}, info) => {
+test("children nest under their parent; the archive tool archives only finished own children, keeping history and drafts", async ({}, info) => {
   test.setTimeout(60_000);
   const userDataDir = await makeUserDataDir("pi-hierarchy-archive-");
   const agentDir = join(userDataDir, "agent");
@@ -39,24 +39,23 @@ test("parent hierarchy and scoped archive tool preserve history and Chinese draf
   const [parent, otherParent, done, incomplete, foreign] = fixtures;
   if (!parent || !otherParent || !done || !incomplete || !foreign)
     throw new Error("Missing fixtures");
-  // The shared text fixture omits provider stop reasons. Add realistic terminal
-  // metadata to synthetic JSONL only, so 'aborted' cannot be treated as complete.
+  // The interrupted child's last turn never got a reply: drop its assistant entry.
   const sessionFiles = await readdir(join(agentDir, "sessions"), { recursive: true });
-  for (const fixture of fixtures) {
-    const name = sessionFiles.find(
-      (file) => file.endsWith(".jsonl") && file.includes(fixture.sessionId),
-    );
-    if (!name) throw new Error("Fixture file not found");
-    const path = join(agentDir, "sessions", name);
-    const entries = (await readFile(path, "utf8"))
-      .trim()
-      .split("\n")
-      .map((line) => JSON.parse(line) as { message?: { role: string; stopReason?: string } });
-    for (const entry of entries)
-      if (entry.message?.role === "assistant")
-        entry.message.stopReason = fixture === incomplete ? "aborted" : "stop";
-    await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
-  }
+  const name = sessionFiles.find(
+    (file) => file.endsWith(".jsonl") && file.includes(incomplete.sessionId),
+  );
+  if (!name) throw new Error("Fixture file not found");
+  const path = join(agentDir, "sessions", name);
+  const lines = (await readFile(path, "utf8")).trim().split("\n");
+  await writeFile(
+    path,
+    lines
+      .filter(
+        (line) =>
+          (JSON.parse(line) as { message?: { role: string } }).message?.role !== "assistant",
+      )
+      .join("\n") + "\n",
+  );
   const now = new Date().toISOString();
   const children: OrchestrationChildThread[] = [done, incomplete, foreign].map((child, index) => ({
     id: `child-${index}`,
@@ -107,7 +106,8 @@ test("parent hierarchy and scoped archive tool preserve history and Chinese draf
     await doneRow.getByRole("button", { name: new RegExp(`^Pin ${done.title}`) }).click();
     await expect(
       window.locator(`.session-list--pinned .session-row[data-session-id="${done.sessionId}"]`),
-    ).toContainText("主任务 A");
+    ).toBeVisible();
+    await expect(group.locator(".session-row")).toHaveCount(1);
     await doneRow.hover();
     await doneRow.getByRole("button", { name: new RegExp(`^Unpin ${done.title}`) }).click();
     await expect(group.locator(`.session-row[data-session-id="${done.sessionId}"]`)).toBeVisible();
@@ -161,7 +161,7 @@ test("parent hierarchy and scoped archive tool preserve history and Chinese draf
     const archived = window.locator(
       `.session-list--archived .session-row[data-session-id="${done.sessionId}"]`,
     );
-    await expect(archived).toContainText("主任务 A");
+    await expect(archived).toBeVisible();
     await archived.hover();
     await archived.getByRole("button", { name: new RegExp(`^Restore ${done.title}`) }).click();
     await expect(

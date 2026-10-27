@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  type ChildThreadLink,
   createEmptyDesktopAppState,
   type DesktopAppState,
   type SessionRecord,
@@ -411,13 +412,13 @@ test("caps a history list at five until it is expanded", () => {
   expect(threadHistoryPreview(threads.slice(0, 5), false).overflow).toBe(false);
 });
 
-function relationship(
+function link(
   id: string,
   parentId: string,
   childId: string,
   parentWorkspaceId = "ws",
   childWorkspaceId = "ws",
-): DesktopAppState["orchestrationChildren"][number] {
+): ChildThreadLink {
   return {
     id,
     parentWorkspaceId,
@@ -425,42 +426,37 @@ function relationship(
     childWorkspaceId,
     childSessionId: childId,
     title: childId,
-    goal: "fixture",
     status: "complete",
-    latestTranscript: "",
-    transcript: [],
-    evidence: [],
-    createdAt: isoDaysAgo(0),
-    updatedAt: isoDaysAgo(0),
   };
 }
 
-test("nests children under their actual parent across recency buckets and workspaces", () => {
+test("nests children under their parent, even from another workspace, in the parent's bucket", () => {
   const model = buildThreadSidebarModel(
     state(
       [
         workspace("ws", "Main", [
-          session("parent", "Main task", { updatedAt: isoDaysAgo(40) }),
-          session("unrelated", "Other task", { updatedAt: isoDaysAgo(2) }),
+          session("parent", "Main task", { updatedAt: isoDaysAgo(2) }),
+          session("unrelated", "Other task", { updatedAt: isoDaysAgo(0) }),
         ]),
         workspace("other", "Child folder", [
           session("child", "Worker", { updatedAt: isoDaysAgo(0) }),
         ]),
       ],
-      { orchestrationChildren: [relationship("child-record", "parent", "child", "ws", "other")] },
+      { childThreadLinks: [link("child-record", "parent", "child", "ws", "other")] },
     ),
     nowMs,
   );
-  expect(model.recencySections[0]?.bucket).toBe("today");
-  const parent = model.recencySections[0]!.threads[0]!;
+  expect(model.recencySections.map((section) => section.bucket)).toEqual(["today", "last-7-days"]);
+  expect(model.recencySections[0]!.threads.map(sessionThreadKey)).toEqual(["ws:unrelated"]);
+  const parent = model.recencySections[1]!.threads[0]!;
   expect(parent.session.id).toBe("parent");
-  expect(parent.isParent).toBe(true);
-  expect(parent.children?.[0]?.parent).toEqual({ key: "ws:parent", title: "Main task" });
+  expect(parent.children?.map(sessionThreadKey)).toEqual(["other:child"]);
+  expect(parent.children?.[0]?.parentKey).toBe("ws:parent");
   expect(model.workspaceGroups[1]?.threads).toEqual([]);
   expect(visibleThreadShortcutOrder({ grouping: "time", model }).map(sessionThreadKey)).toEqual([
+    "ws:unrelated",
     "ws:parent",
     "other:child",
-    "ws:unrelated",
   ]);
   expect(
     visibleThreadShortcutOrder({
@@ -468,10 +464,10 @@ test("nests children under their actual parent across recency buckets and worksp
       model,
       collapsedThreadKeys: new Set(["ws:parent"]),
     }).map(sessionThreadKey),
-  ).toEqual(["ws:parent", "ws:unrelated"]);
+  ).toEqual(["ws:unrelated", "ws:parent"]);
 });
 
-test("pins, archives and orphaned children remain reachable with their parent identity", () => {
+test("pinned, archived and orphaned children stay reachable as their own rows", () => {
   const model = buildThreadSidebarModel(
     state(
       [
@@ -487,25 +483,41 @@ test("pins, archives and orphaned children remain reachable with their parent id
         ]),
       ],
       {
-        orchestrationChildren: [
-          relationship("n", "parent", "nested"),
-          relationship("p", "parent", "pin"),
-          relationship("a", "parent", "archive"),
-          relationship("o", "missing", "orphan"),
+        childThreadLinks: [
+          link("n", "parent", "nested"),
+          link("p", "parent", "pin"),
+          link("a", "parent", "archive"),
+          link("o", "missing", "orphan"),
         ],
       },
     ),
     nowMs,
   );
-  expect(model.pinnedThreads[0]?.session.id).toBe("pin");
-  expect(model.pinnedThreads[0]?.parent?.key).toBe("ws:parent");
-  expect(model.archivedThreads[0]?.parent?.title).toBe("Main task");
+  expect(model.pinnedThreads.map((thread) => thread.session.id)).toEqual(["pin"]);
+  expect(model.archivedThreads.map((thread) => thread.session.id)).toEqual(["archive"]);
   const visible = visibleThreadShortcutOrder({ grouping: "time", model, archivedOpen: true });
   expect(new Set(visible.map(sessionThreadKey)).size).toBe(5);
   expect(visible).toHaveLength(5);
   expect(
     model.recencyOrder.find((t) => t.session.id === "parent")?.children?.map((t) => t.session.id),
   ).toEqual(["nested"]);
+});
+
+test("children follow a pinned parent into the pinned section", () => {
+  const model = buildThreadSidebarModel(
+    state(
+      [
+        workspace("ws", "Main", [
+          session("parent", "Main task", { updatedAt: isoDaysAgo(3), pinnedAt: isoDaysAgo(1) }),
+          session("child", "Worker", { updatedAt: isoDaysAgo(0) }),
+        ]),
+      ],
+      { childThreadLinks: [link("c", "parent", "child")] },
+    ),
+    nowMs,
+  );
+  expect(model.pinnedThreads[0]?.children?.map(sessionThreadKey)).toEqual(["ws:child"]);
+  expect(model.recencySections).toEqual([]);
 });
 
 test("malformed cycles cannot hide sessions or loop during hierarchy traversal", () => {
@@ -518,13 +530,7 @@ test("malformed cycles cannot hide sessions or loop during hierarchy traversal",
           ["a", "b", "c"].map((id) => session(id, id, { updatedAt: isoDaysAgo(0) })),
         ),
       ],
-      {
-        orchestrationChildren: [
-          relationship("a", "b", "a"),
-          relationship("b", "c", "b"),
-          relationship("c", "a", "c"),
-        ],
-      },
+      { childThreadLinks: [link("a", "b", "a"), link("b", "c", "b"), link("c", "a", "c")] },
     ),
     nowMs,
   );

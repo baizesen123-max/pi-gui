@@ -1,6 +1,6 @@
 import type {
+  ChildThreadLink,
   DesktopAppState,
-  OrchestrationChildThreadStatus,
   SessionRecord,
   ThreadGrouping,
   WorkspaceRecord,
@@ -27,11 +27,10 @@ export interface ThreadListEntry {
   readonly session: SessionRecord;
   readonly environment: ThreadEnvironmentMeta;
   readonly contextLabel: string;
-  readonly parent?: { readonly key: string; readonly title: string };
-  readonly isParent?: boolean;
-  readonly childStatus?: OrchestrationChildThreadStatus;
+  /** Set when this row is drawn nested under its parent thread's row. */
+  readonly parentKey?: string;
+  /** Child threads drawn nested under this row, most recent first. */
   readonly children?: readonly ThreadListEntry[];
-  readonly latestActivityAt?: string;
 }
 
 export interface WorkspaceThreadGroup {
@@ -71,23 +70,13 @@ export function buildThreadSidebarModel(
   state: DesktopAppState,
   nowMs: number = Date.now(),
 ): ThreadSidebarModel {
-  const entries = collectThreadEntries(state);
-  const nestedKeys = attachThreadHierarchy(entries, state.orchestrationChildren);
+  const entries = nestThreads(collectThreadEntries(state), state.childThreadLinks);
   const pinnedThreads = entries
     .filter((entry) => !entry.session.archivedAt && Boolean(entry.session.pinnedAt))
     .sort((left, right) => comparePinnedThreads(left, right, state.pinnedSessionOrder));
   const historyThreads = entries
-    .filter(
-      (entry) =>
-        !entry.session.archivedAt &&
-        !entry.session.pinnedAt &&
-        !nestedKeys.has(sessionThreadKey(entry)),
-    )
-    .sort(
-      (left, right) =>
-        threadActivityAt(right).localeCompare(threadActivityAt(left)) ||
-        compareByRecency(left.session, right.session),
-    );
+    .filter((entry) => !entry.session.archivedAt && !entry.session.pinnedAt && !entry.parentKey)
+    .sort((left, right) => compareByRecency(left.session, right.session));
   const archivedThreads = entries
     .filter((entry) => Boolean(entry.session.archivedAt))
     .sort((left, right) => compareByRecency(left.session, right.session));
@@ -125,73 +114,61 @@ export function buildThreadSidebarModel(
   };
 }
 
-function threadActivityAt(thread: ThreadListEntry): string {
-  return thread.latestActivityAt ?? sessionLastInteractedAt(thread.session);
-}
-
-/** View-only links: no transcript reads, persistence, or changes to task execution. */
-function attachThreadHierarchy(
-  entries: ThreadListEntry[],
-  relationships: DesktopAppState["orchestrationChildren"],
-): ReadonlySet<string> {
-  type Node = Omit<ThreadListEntry, "parent" | "childStatus" | "children" | "latestActivityAt"> & {
-    parent?: ThreadListEntry["parent"];
-    childStatus?: OrchestrationChildThreadStatus;
-    children?: Node[];
-    latestActivityAt?: string;
-    isParent?: boolean;
-  };
-  const nodes = new Map(entries.map((entry) => [sessionThreadKey(entry), entry as Node]));
-  const parents = new Map<string, string>();
-  for (const relation of relationships) {
-    const key = `${relation.childWorkspaceId}:${relation.childSessionId}`;
-    const parentKey = `${relation.parentWorkspaceId}:${relation.parentSessionId}`;
-    const child = nodes.get(key);
-    const parent = nodes.get(parentKey);
-    if (parent && key !== parentKey) parent.isParent = true;
-    if (!child || child.parent || key === parentKey) continue;
-    child.parent = { key: parentKey, title: parent?.session.title ?? "Original parent" };
-    child.childStatus = relation.status;
-    // Pins keep their existing location; archived/orphaned children keep a parent label.
-    if (
-      parent &&
-      !parent.session.archivedAt &&
-      !child.session.archivedAt &&
-      !child.session.pinnedAt
-    ) {
-      parents.set(key, parentKey);
-    }
+/**
+ * Nests each child thread under its parent's row. A child stays a top-level row when
+ * it is pinned or archived, its parent is archived or missing, or the saved
+ * links form a cycle, so every thread stays reachable. View-only: no transcript reads.
+ */
+function nestThreads(
+  entries: readonly ThreadListEntry[],
+  links: readonly ChildThreadLink[],
+): ThreadListEntry[] {
+  const byKey = new Map(entries.map((entry) => [sessionThreadKey(entry), entry]));
+  const parentOf = new Map<string, string>();
+  for (const link of links) {
+    const key = `${link.childWorkspaceId}:${link.childSessionId}`;
+    const parentKey = `${link.parentWorkspaceId}:${link.parentSessionId}`;
+    const child = byKey.get(key);
+    const parent = byKey.get(parentKey);
+    if (!child || !parent || key === parentKey || parentOf.has(key)) continue;
+    if (child.session.archivedAt || child.session.pinnedAt) continue;
+    if (parent.session.archivedAt) continue;
+    parentOf.set(key, parentKey);
   }
-  // Break malformed saved cycles in linear time, so every session remains reachable.
-  const visited = new Set<string>();
-  for (const key of parents.keys()) {
+  for (const start of [...parentOf.keys()]) {
     const path = new Set<string>();
-    let cursor: string | undefined = key;
-    while (cursor && !visited.has(cursor)) {
+    for (let cursor: string | undefined = start; cursor; cursor = parentOf.get(cursor)) {
       if (path.has(cursor)) {
-        parents.delete(cursor);
+        parentOf.delete(cursor);
         break;
       }
       path.add(cursor);
-      cursor = parents.get(cursor);
     }
-    for (const item of path) visited.add(item);
   }
-  for (const [key, parentKey] of parents) {
-    const parent = nodes.get(parentKey)!;
-    (parent.children ??= []).push(nodes.get(key)!);
+  const childKeys = new Map<string, string[]>();
+  for (const [key, parentKey] of parentOf) {
+    const siblings = childKeys.get(parentKey);
+    if (siblings) siblings.push(key);
+    else childKeys.set(parentKey, [key]);
   }
-  const roots = entries.filter((entry) => !parents.has(sessionThreadKey(entry)));
-  const ordered = flattenThreadTrees(roots);
-  for (let index = ordered.length - 1; index >= 0; index--) {
-    const node = ordered[index] as Node;
-    node.children?.sort((a, b) => threadActivityAt(b).localeCompare(threadActivityAt(a)));
-    node.latestActivityAt = node.children?.reduce(
-      (latest, child) => (latest > threadActivityAt(child) ? latest : threadActivityAt(child)),
-      sessionLastInteractedAt(node.session),
-    );
-  }
-  return new Set(parents.keys());
+  const built = new Map<string, ThreadListEntry>();
+  const build = (key: string): ThreadListEntry => {
+    const done = built.get(key);
+    if (done) return done;
+    const entry = byKey.get(key)!;
+    const children = (childKeys.get(key) ?? [])
+      .map(build)
+      .sort((left, right) => compareByRecency(left.session, right.session));
+    const parentKey = parentOf.get(key);
+    const next: ThreadListEntry = {
+      ...entry,
+      ...(parentKey ? { parentKey } : {}),
+      ...(children.length ? { children } : {}),
+    };
+    built.set(key, next);
+    return next;
+  };
+  return entries.map((entry) => build(sessionThreadKey(entry)));
 }
 
 export function flattenThreadTrees(

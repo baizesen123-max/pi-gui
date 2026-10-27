@@ -80,12 +80,20 @@ test("create_child_thread returns after a slow worker starts, before its turn co
     const window = await harness.firstWindow();
     await createNamedThread(window, "Parent orchestration thread");
     const parentRef = await selectedSessionRef(window);
-    // Record what state pushes carry, to check they leave the children out.
+    // Record what state pushes carry: child links, and never child transcripts.
     await window.evaluate(() => {
-      const record = globalThis as typeof globalThis & { pushedChildCounts?: number[] };
-      record.pushedChildCounts = [];
+      const record = globalThis as typeof globalThis & {
+        pushes?: { transcriptRows: number; linkedChildIds: string[] }[];
+      };
+      record.pushes = [];
       globalThis.window.piApp?.onStateChanged((state) => {
-        record.pushedChildCounts?.push(state.orchestrationChildren.length);
+        record.pushes?.push({
+          transcriptRows: state.orchestrationChildren.reduce(
+            (rows, child) => rows + child.transcript.length + (child.latestTranscript ? 1 : 0),
+            0,
+          ),
+          linkedChildIds: state.childThreadLinks.map((link) => link.childSessionId),
+        });
       });
     });
     const prompt = "Keep this delegated worker running slowly.";
@@ -106,6 +114,7 @@ test("create_child_thread returns after a slow worker starts, before its turn co
       (entry) => entry.sourceToolCallId === "create-child-start-ack",
     );
     expect(child?.status).toBe("running");
+    expect(child?.transcript.length).toBeGreaterThan(0);
     const childRunningIndicator = window.locator(
       `.session-row[data-session-id="${child?.childSessionId}"] .session-row__status--running`,
     );
@@ -137,12 +146,35 @@ test("create_child_thread returns after a slow worker starts, before its turn co
         .flatMap((ws) => ws.sessions)
         .find((session) => session.id === child?.childSessionId)?.archivedAt,
     ).toBeUndefined();
-    // getState() returns the child, but state pushes to the window never carry it.
-    const pushedChildCounts = await window.evaluate(
-      () => (globalThis as typeof globalThis & { pushedChildCounts?: number[] }).pushedChildCounts,
+    // getState() returns the full child; pushes carry only its link, never its transcript.
+    const pushes = () =>
+      window.evaluate(
+        () =>
+          (
+            globalThis as typeof globalThis & {
+              pushes?: { transcriptRows: number; linkedChildIds: string[] }[];
+            }
+          ).pushes ?? [],
+      );
+    const nestedChildRow = window.locator(
+      `.session-tree__children[data-parent-session-id="${parentRef.sessionId}"] .session-row[data-session-id="${child?.childSessionId}"]`,
     );
-    expect(pushedChildCounts?.length).toBeGreaterThan(0);
-    expect(pushedChildCounts?.every((count) => count === 0)).toBe(true);
+    await expect(nestedChildRow).toBeVisible();
+    const pushesBefore = (await pushes()).length;
+    // Pin and unpin the parent: each sends a push. The tree must survive them.
+    const parentRow = window
+      .locator(`.session-row[data-session-id="${parentRef.sessionId}"]`)
+      .first();
+    await parentRow.hover();
+    await parentRow.getByRole("button", { name: /^Pin / }).click();
+    await expect(nestedChildRow).toBeVisible();
+    await parentRow.hover();
+    await parentRow.getByRole("button", { name: /^Unpin / }).click();
+    await expect.poll(async () => (await pushes()).length).toBeGreaterThan(pushesBefore + 1);
+    await expect(nestedChildRow).toBeVisible();
+    const pushed = await pushes();
+    expect(pushed.every((push) => push.transcriptRows === 0)).toBe(true);
+    expect(pushed.at(-1)?.linkedChildIds).toContain(child?.childSessionId);
     if (proofDir) {
       await window.screenshot({
         path: join(proofDir, "orchestration-child-running.png"),

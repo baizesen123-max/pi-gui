@@ -89,7 +89,8 @@ interface OrchestrationOwnerHost {
     | { archivedAt?: string; updatedAt: string; title: string; status: string; preview?: string }
     | undefined;
   ensureSessionReady(sessionRef: SessionRef): Promise<SessionSnapshot | undefined>;
-  archiveCompletedSession(sessionRef: SessionRef): Promise<void>;
+  /** Archives only if the driver confirms nothing is in flight; throws otherwise. */
+  archiveIdleSession(sessionRef: SessionRef): Promise<void>;
   ensureSessionSubscription(sessionRef: SessionRef): Promise<void>;
   subscribeToSessionEvents(
     listener: (event: SessionDriverEvent, state: DesktopAppState) => void | Promise<void>,
@@ -623,61 +624,10 @@ async function archiveChildThreadsToolResult(
   const archived: string[] = [];
   const skipped: { threadId: string; reason: string }[] = [];
   for (const threadId of new Set(threadIds)) {
-    // Resolve within the caller's own children, never the selected UI session or workspace list.
-    const child = store
-      .orchestrationState()
-      .orchestrationChildren.find(
-        (entry) =>
-          entry.parentWorkspaceId === parentRef.workspaceId &&
-          entry.parentSessionId === parentRef.sessionId &&
-          (entry.id === threadId ||
-            entry.childSessionId === threadId ||
-            sessionKey(childSessionRef(entry)) === threadId),
-      );
     try {
-      if (!child || sessionKey(childSessionRef(child)) === sessionKey(parentRef)) {
-        throw new Error("Only direct child threads created by the calling parent can be archived.");
-      }
-      const ref = childSessionRef(child);
-      const session = store.sessionFromState(ref);
-      if (!session) throw new Error("Child session was not found; it was not archived.");
-      if (session.archivedAt) throw new Error("Child thread is already archived.");
-      if (session.status !== "idle" || store.getQueuedComposerMessages(ref).length > 0) {
-        throw new Error("Child thread is running or has queued messages; it was not archived.");
-      }
-      if (
-        store
-          .orchestrationState()
-          .orchestrationChildren.some(
-            (entry) =>
-              entry.parentWorkspaceId === ref.workspaceId &&
-              entry.parentSessionId === ref.sessionId &&
-              !store.sessionFromState(childSessionRef(entry))?.archivedAt,
-          )
-      )
-        throw new Error("This child has unarchived descendants; handle those threads first.");
-      const snapshot = await store.ensureSessionReady(ref);
-      if (
-        (snapshot &&
-          (snapshot.status !== "idle" ||
-            snapshot.runningRunId ||
-            snapshot.queuedMessages?.length)) ||
-        store.sessionFromState(ref)?.status !== "idle" ||
-        store.getQueuedComposerMessages(ref).length > 0
-      ) {
-        throw new Error(
-          "Cannot confirm that the child is idle with an empty queue; it was not archived.",
-        );
-      }
-      // Already-open sessions return no new snapshot from ensureSessionReady.
-      // The driver repeats the busy/completion checks atomically at the write boundary.
-      await store.archiveCompletedSession(ref);
-      updateChildSupervisionLoop(
-        store,
-        child.id,
-        "stop",
-        "Child thread archived at the user's request.",
-      );
+      const child = ownDirectChild(store, parentRef, threadId);
+      await archiveFinishedChild(store, child);
+      updateChildSupervisionLoop(store, child.id, "stop", "Child thread archived.");
       archived.push(child.id);
     } catch (error) {
       skipped.push({ threadId, reason: errorMessage(error) });
@@ -692,7 +642,7 @@ async function archiveChildThreadsToolResult(
       {
         type: "text",
         text: [
-          `Archived ${archived.length} child thread(s). History and drafts are preserved; restore them from the sidebar.`,
+          `Archived ${archived.length} child thread(s). History and drafts are kept; restore them from the sidebar.`,
           ...archived.map((id) => `Archived: ${id}`),
           ...skipped.map((item) => `Skipped ${item.threadId}: ${item.reason}`),
         ].join("\n"),
@@ -700,6 +650,72 @@ async function archiveChildThreadsToolResult(
     ],
     details: { action: archiveChildThreadsAction, archived, skipped },
   };
+}
+
+/** Resolves an id only among the caller's own children, never the UI selection. */
+function ownDirectChild(
+  store: OrchestrationOwnerHost,
+  parentRef: SessionRef,
+  threadId: string,
+): OrchestrationChildThread {
+  const child = store
+    .orchestrationChildren()
+    .find(
+      (entry) =>
+        entry.parentWorkspaceId === parentRef.workspaceId &&
+        entry.parentSessionId === parentRef.sessionId &&
+        (entry.id === threadId ||
+          entry.childSessionId === threadId ||
+          sessionKey(childSessionRef(entry)) === threadId),
+    );
+  if (!child || sessionKey(childSessionRef(child)) === sessionKey(parentRef)) {
+    throw new Error("Only direct child threads of this thread can be archived.");
+  }
+  return child;
+}
+
+/**
+ * The app decides that a child's work is finished; the driver only guarantees that
+ * nothing is in flight at the moment of the write. A child whose turn ends while we
+ * check is still finished, and one that starts a turn is refused by the driver.
+ */
+async function archiveFinishedChild(
+  store: OrchestrationOwnerHost,
+  child: OrchestrationChildThread,
+): Promise<void> {
+  const ref = childSessionRef(child);
+  if (!store.sessionFromState(ref)) throw new Error("Child thread was not found.");
+  if (store.sessionFromState(ref)?.archivedAt) throw new Error("Child thread is already archived.");
+  const openDescendant = store
+    .orchestrationChildren()
+    .some(
+      (entry) =>
+        entry.parentWorkspaceId === ref.workspaceId &&
+        entry.parentSessionId === ref.sessionId &&
+        !store.sessionFromState(childSessionRef(entry))?.archivedAt,
+    );
+  if (openDescendant) throw new Error("This child has its own unarchived child threads.");
+  await store.ensureSessionReady(ref);
+  const unfinished = unfinishedChildReason(store, ref);
+  if (unfinished) throw new Error(`${unfinished}; it was not archived.`);
+  await store.archiveIdleSession(ref);
+}
+
+/** Finished means idle with an empty queue, and the last turn ended with an assistant reply. */
+function unfinishedChildReason(store: OrchestrationOwnerHost, ref: SessionRef): string | undefined {
+  const session = store.sessionFromState(ref);
+  const status = session ? toOrchestrationStatus(session.status, ref, store) : "failed";
+  if (status === "running" || status === "waiting")
+    return "Child thread is running or has queued messages";
+  if (status === "queued") return "Child thread has not started its work";
+  if (status === "failed") return "Child thread's last run failed";
+  const transcript = store.transcriptFor(ref);
+  for (let index = transcript.length - 1; index >= 0; index--) {
+    const item = transcript[index]!;
+    if (item.kind === "message" && item.role === "assistant") return undefined;
+    if (item.kind === "tool" || (item.kind === "message" && item.role === "user")) break;
+  }
+  return "Child thread's last turn did not end with a reply";
 }
 
 function listThreadsToolResult(

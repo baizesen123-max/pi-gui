@@ -40,6 +40,7 @@ import type {
 } from "@pi-gui/session-driver/runtime-types";
 import {
   type AppView,
+  childThreadLinksOf,
   type ComposerAttachment,
   type ComposerDraftSyncSource,
   type ExtensionCommandCompatibilityRecord,
@@ -51,6 +52,7 @@ import {
   type DesktopAppViewState,
   type ForkThreadInput,
   type NotificationPreferences,
+  type OrchestrationChildThread,
   type QueuedComposerMessage,
   type RemoveWorktreeInput,
   type SendChildThreadFollowUpInput,
@@ -488,12 +490,12 @@ export class DesktopAppStore {
         workspaces: structuredClone(this.state.workspaces),
         orchestrationChildren: structuredClone(this.state.orchestrationChildren),
       }),
-      archiveCompletedSession: async (ref) => {
-        await this.workspaceOwner.archiveSession(ref, true);
+      archiveIdleSession: async (ref) => {
+        await this.workspaceOwner.archiveIdleSession(ref);
       },
       orchestrationChildren: () => this.state.orchestrationChildren,
       replaceOrchestrationChildren: (children) => {
-        this.state = { ...this.state, orchestrationChildren: [...children] };
+        this.state = { ...this.state, ...this.orchestrationChildrenState([...children]) };
       },
       refreshState: (refreshOptions) => this.refreshState(refreshOptions),
       emit: () => this.emit(),
@@ -620,6 +622,16 @@ export class DesktopAppStore {
       throw new Error("Saved UI state is unavailable; repair or restore it before saving layouts.");
     if (!this.sessionFromState(target))
       throw new Error("Workbench task does not exist in this workspace.");
+  }
+
+  /** The only way to set children: it keeps the window's slim links in step with them. */
+  private orchestrationChildrenState(
+    children: readonly OrchestrationChildThread[],
+  ): Pick<DesktopAppState, "orchestrationChildren" | "childThreadLinks"> {
+    return {
+      orchestrationChildren: children,
+      childThreadLinks: childThreadLinksOf(children, this.state.childThreadLinks),
+    };
   }
 
   snapshot(): DesktopAppState {
@@ -2257,7 +2269,7 @@ export class DesktopAppStore {
       threadGrouping: persisted.threadGrouping ?? "time",
       collapsedWorkspaceIds: persisted.collapsedWorkspaceIds ?? [],
       enableTransparency: persisted.enableTransparency ?? this.state.enableTransparency,
-      orchestrationChildren: persisted.orchestrationChildren ?? [],
+      ...this.orchestrationChildrenState(persisted.orchestrationChildren ?? []),
     };
 
     this.sessionState.lastViewedAtBySession.clear();
@@ -2594,7 +2606,7 @@ export class DesktopAppStore {
       await this.orchestrationOwner.hydrateOrchestrationChildren();
       this.state = {
         ...this.state,
-        orchestrationChildren: this.orchestrationOwner.projectOrchestrationChildren(),
+        ...this.orchestrationChildrenState(this.orchestrationOwner.projectOrchestrationChildren()),
       };
       this.scheduleOrchestrationSupervision();
 
@@ -3555,8 +3567,8 @@ export class DesktopAppStore {
       ) {
         this.state = {
           ...this.state,
-          orchestrationChildren: this.orchestrationOwner.projectOrchestrationChildrenForSession(
-            event.sessionRef,
+          ...this.orchestrationChildrenState(
+            this.orchestrationOwner.projectOrchestrationChildrenForSession(event.sessionRef),
           ),
         };
         this.scheduleOrchestrationSupervision();

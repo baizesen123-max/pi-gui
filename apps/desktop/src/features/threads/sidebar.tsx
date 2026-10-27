@@ -258,9 +258,9 @@ export function Sidebar(props: SidebarProps) {
       ? threadSidebarModel.recencyOrder.find((item) => item.session.id === renameSessionId)
       : entries.get(`${selectedWorkspace?.id}:${selectedSession?.id}`);
     const ancestors = new Set<string>();
-    while (entry?.parent && !ancestors.has(entry.parent.key)) {
-      ancestors.add(entry.parent.key);
-      entry = entries.get(entry.parent.key);
+    while (entry?.parentKey && !ancestors.has(entry.parentKey)) {
+      ancestors.add(entry.parentKey);
+      entry = entries.get(entry.parentKey);
     }
     setCollapsedThreads((current) => {
       if (![...ancestors].some((key) => current.has(key))) return current;
@@ -1599,20 +1599,6 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(
     const threadKey = sessionThreadKey(thread);
     const children = thread.children ?? [];
     const childrenOpen = !tree?.collapsed.has(threadKey);
-    const roleLabel = thread.parent
-      ? "Child thread"
-      : thread.isParent
-        ? "Parent thread"
-        : undefined;
-    const childState = thread.childStatus
-      ? {
-          queued: "Not started",
-          running: "Running",
-          waiting: "Queued",
-          complete: "Finished",
-          failed: "Failed",
-        }[thread.childStatus]
-      : undefined;
     const pinned = Boolean(thread.session.pinnedAt);
     const actionContext = showContext ? ` in ${thread.contextLabel}` : "";
     const shortcut = tree?.shortcuts?.get(sessionThreadKey(thread));
@@ -1641,8 +1627,7 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(
           data-sidebar-indicator={indicatorVariant}
           data-session-pinned={pinned ? "true" : "false"}
           data-session-id={thread.session.id}
-          data-parent-thread={thread.parent?.key}
-          data-thread-role={roleLabel}
+          data-parent-thread={thread.parentKey}
           data-thread-shortcut={shortcutBadge ? String(shortcutBadge.slot) : undefined}
           aria-keyshortcuts={
             shortcutBadge ? `${IS_MAC ? "Meta" : "Control"}+${shortcutBadge.slot}` : undefined
@@ -1698,19 +1683,6 @@ const ThreadSessionRow = forwardRef<HTMLDivElement, ThreadSessionRowProps>(
               </span>
               {showContext ? (
                 <span className="session-row__context">{thread.contextLabel}</span>
-              ) : null}
-              {roleLabel ? (
-                <span
-                  className="session-row__relationship"
-                  title={thread.parent ? `Child of ${thread.parent.title}` : undefined}
-                >
-                  {roleLabel}
-                  {childState ? ` · ${childState}` : ""}
-                  {children.length
-                    ? ` · ${children.length} ${children.length === 1 ? "child" : "children"}`
-                    : ""}
-                  {thread.parent ? ` · ${thread.parent.title}` : ""}
-                </span>
               ) : null}
             </span>
           </button>

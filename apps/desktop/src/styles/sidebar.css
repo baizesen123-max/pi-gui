@@ -709,14 +709,6 @@
   height: 12px;
 }
 
-.session-row__relationship {
-  font-size: 11px;
-  color: var(--muted-soft);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .session-row__title-line {
   min-width: 0;
   display: flex;
