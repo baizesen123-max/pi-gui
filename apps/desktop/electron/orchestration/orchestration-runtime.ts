@@ -74,6 +74,8 @@ export interface ListThreadsToolDetails {
   /** The `workspace` argument, when the call named another project or `*`. */
   readonly workspace?: string;
   readonly threads?: readonly OrchestrationThreadListEntry[];
+  /** Threads a `*` listing left out past its cap; name a project to see them. */
+  readonly omittedThreadCount?: number;
   readonly error?: string;
 }
 

@@ -59,6 +59,8 @@ import type {
 const CHILD_TITLE_LIMIT = 56;
 const MAX_CHILD_TRANSCRIPT_MESSAGES = 40;
 const MAX_READ_THREAD_MESSAGES = 60;
+/** How many threads list_threads returns for `workspace: "*"`, most relevant first. */
+export const MAX_ALL_PROJECT_THREADS = 200;
 const MAX_EVIDENCE_RECORDS_PER_CHILD = 80;
 const DEFAULT_SUPERVISION_INTERVAL_MS = 60_000;
 const MIN_SUPERVISION_INTERVAL_MS = 250;
@@ -757,21 +759,28 @@ function listThreadsToolResult(
   workspace?: string,
 ): AgentToolResult<ListThreadsToolDetails> {
   store.replaceOrchestrationChildren(projectOrchestrationChildren(store));
-  const threads = workspace
+  const listed = workspace
     ? listThreadsInWorkspaces(store, parentRef, workspace)
     : listThreadsForContext(store, parentRef);
-  if (typeof threads === "string") {
+  if (typeof listed === "string") {
     return {
-      content: [{ type: "text", text: threads }],
-      details: { action: listThreadsAction, workspace, error: threads },
+      content: [{ type: "text", text: listed }],
+      details: { action: listThreadsAction, workspace, error: listed },
     };
   }
+  const capped = workspace?.trim() === "*" && listed.length > MAX_ALL_PROJECT_THREADS;
+  const threads = capped ? listed.slice(0, MAX_ALL_PROJECT_THREADS) : listed;
+  const omitted = listed.length - threads.length;
+  const text = capped
+    ? `${formatThreadList(threads)}\nShowing ${threads.length} of ${listed.length} threads: this project's first, then the most recently updated. ${omitted} more are not listed; pass workspace with a project name to list that project's threads.`
+    : formatThreadList(threads);
   return {
-    content: [{ type: "text", text: formatThreadList(threads) }],
+    content: [{ type: "text", text }],
     details: {
       action: listThreadsAction,
       ...(workspace ? { workspace } : {}),
       threads,
+      ...(capped ? { omittedThreadCount: omitted } : {}),
     },
   };
 }
