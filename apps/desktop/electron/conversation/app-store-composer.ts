@@ -551,7 +551,6 @@ async function submitComposerToSession(
       store.conversationState.composerDraftsBySession.delete(key);
       store.conversationState.composerAttachmentsBySession.delete(key);
       store.setQueuedComposerEditState(sessionRef, undefined);
-      await store.persistComposerAttachments(key, []);
       const nextSessionQueuedMessages = toSessionQueuedMessages(nextQueuedMessages);
       optimisticSteerMessage =
         deliverAs === "steer"
@@ -566,7 +565,10 @@ async function submitComposerToSession(
         store.publishSelectedTranscriptFor(sessionRef);
       }
       store.recordUserMessageRecency(sessionRef);
+      // Hand the message to the driver before any await: the session may settle meanwhile, and
+      // the driver must see the queued send before an agent archive can (see archiveSessionIfIdle).
       await store.driver.replaceQueuedMessages(sessionRef, nextSessionQueuedMessages);
+      await store.persistComposerAttachments(key, []);
       return store.refreshState({
         clearLastError: true,
         markSelectedSessionViewed: false,
