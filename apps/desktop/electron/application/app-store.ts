@@ -490,10 +490,8 @@ export class DesktopAppStore {
       orchestrationState: () => ({
         selectedWorkspaceId: this.state.selectedWorkspaceId,
         selectedSessionId: this.state.selectedSessionId,
-        // Internal owners read immutable state; copying every child for an identity
-        // lookup made each streaming delta proportional to all open threads.
-        workspaces: this.state.workspaces,
-        orchestrationChildren: this.state.orchestrationChildren,
+        workspaces: structuredClone(this.state.workspaces),
+        orchestrationChildren: structuredClone(this.state.orchestrationChildren),
       }),
       orchestrationChildren: () => this.state.orchestrationChildren,
       replaceOrchestrationChildren: (children) => {

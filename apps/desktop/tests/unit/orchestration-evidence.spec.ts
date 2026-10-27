@@ -39,6 +39,7 @@ function fixture() {
     driver: { createSession: forbiddenAsync, cancelCurrentRun: forbiddenAsync },
     initialize: forbiddenAsync,
     orchestrationState: () => ({ workspaces: [], orchestrationChildren: children }),
+    orchestrationChildren: () => children,
     replaceOrchestrationChildren: forbidden,
     refreshState: forbiddenAsync,
     emit: forbidden,

@@ -722,7 +722,7 @@ function projectOrchestrationChildrenForSession(
   sessionRef: SessionRef,
 ): readonly OrchestrationChildThread[] {
   const now = new Date().toISOString();
-  const children = store.orchestrationState().orchestrationChildren;
+  const children = store.orchestrationChildren();
   const parentEvidenceByChild = parentEvidenceIndex(store, children);
   return children.map((child) =>
     child.childWorkspaceId === sessionRef.workspaceId &&
