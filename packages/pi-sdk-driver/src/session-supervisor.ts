@@ -238,6 +238,8 @@ interface ManagedSessionRecord {
    * queue change sent from it must not queue it again.
    */
   startedQueuedMessageIds: Set<string>;
+  /** Every queued message id this record accepted, so a late edit is not taken for a send. */
+  acceptedQueuedMessageIds: Set<string>;
   /** Starting a queued message failed; it waits for the person's next send or queue change. */
   queuedStartFailed: boolean;
   closed: boolean;
@@ -1234,6 +1236,17 @@ export class SessionSupervisor {
         .filter((message) => !record.startedQueuedMessageIds.has(message.id))
         .map((message) => cloneQueuedMessage(message));
       record.queuedStartFailed = false;
+      // A newly queued message is a send, so it brings the thread back from the archive as a
+      // direct send does. This undoes an agent archive that landed while the app was still
+      // preparing the queue change. Editing, removing, or a late copy of a message accepted
+      // before (Stop clears the queue) does not.
+      let accepted = false;
+      for (const message of record.queuedMessages) {
+        if (record.acceptedQueuedMessageIds.has(message.id)) continue;
+        record.acceptedQueuedMessageIds.add(message.id);
+        accepted = true;
+      }
+      if (accepted) record.archivedAt = undefined;
     });
 
     record.updatedAt = nowIso();
@@ -1773,6 +1786,7 @@ export class SessionSupervisor {
       sendsSettling: 0,
       queueStepsPending: 0,
       startedQueuedMessageIds: new Set(),
+      acceptedQueuedMessageIds: new Set(),
       queuedStartFailed: false,
       closed: false,
       listeners: new Set<SessionEventListener>(),

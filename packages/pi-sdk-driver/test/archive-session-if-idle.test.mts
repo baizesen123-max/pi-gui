@@ -22,6 +22,7 @@ function fixture() {
     queueStepsPending: 0,
     piQueueSync: Promise.resolve() as Promise<unknown>,
     startedQueuedMessageIds: new Set<string>(),
+    acceptedQueuedMessageIds: new Set<string>(),
     reloadInFlight: undefined as Promise<void> | undefined,
     reloadPending: false,
     queuedMessages: [] as unknown[],
@@ -204,5 +205,80 @@ await test("a queued message starting does not undo the user's archive", async (
     sendReadyMessage(record: unknown, input: { text: string }): Promise<void>;
   };
   await supervisor.sendReadyMessage(f.record, { text: "queued follow-up" }).catch(() => undefined);
+  assert.equal(f.record.archivedAt, archivedAt);
+});
+
+function queueFixture() {
+  const f = fixture();
+  const piQueue: string[] = [];
+  const session = f.record.session as typeof f.record.session & Record<string, unknown>;
+  Object.assign(f.record, { eventQueue: Promise.resolve() });
+  Object.assign(session, {
+    followUp: async (text: string) => {
+      piQueue.push(text);
+    },
+    steer: async () => undefined,
+    getFollowUpMessages: () => piQueue,
+    clearQueue: () => {
+      piQueue.length = 0;
+    },
+  });
+  const started: { text: string; archived: boolean }[] = [];
+  Object.assign(f.supervisor, {
+    sendReadyMessage: async (record: { archivedAt?: string }, input: { text: string }) => {
+      started.push({ text: input.text, archived: Boolean(record.archivedAt) });
+    },
+  });
+  return { ...f, started };
+}
+
+function queued(id: string, text: string) {
+  return {
+    id,
+    text,
+    mode: "followUp" as const,
+    createdAt: "2026-10-26T00:00:00Z",
+    updatedAt: "2026-10-26T00:00:00Z",
+  };
+}
+
+await test("a follow-up queued while an agent archive landed brings the thread back before it starts", async () => {
+  const f = queueFixture();
+  // The app accepted the follow-up while the child ran, then awaited before queueing it.
+  // Meanwhile the child settled and the parent agent archived it.
+  await f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" });
+  assert.ok(f.record.archivedAt);
+  await f.supervisor.replaceQueuedMessages(f.record.ref, [queued("q1", "one more thing")]);
+  await f.record.piQueueSync;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.started, [{ text: "one more thing", archived: false }]);
+  assert.equal(f.record.archivedAt, undefined);
+});
+
+await test("editing or removing what was already queued keeps the user's archive", async () => {
+  const f = queueFixture();
+  f.record.runningRunId = "run";
+  f.record.status = "running";
+  await f.supervisor.replaceQueuedMessages(f.record.ref, [queued("q1", "first")]);
+  await f.supervisor.archiveSession(f.record.ref);
+  const archivedAt = f.record.archivedAt;
+  assert.ok(archivedAt);
+  await f.supervisor.replaceQueuedMessages(f.record.ref, [queued("q1", "first, edited")]);
+  assert.equal(f.record.archivedAt, archivedAt);
+  await f.supervisor.replaceQueuedMessages(f.record.ref, []);
+  assert.equal(f.record.archivedAt, archivedAt);
+  assert.deepEqual(f.started, []);
+});
+
+await test("a late edit of a message Stop cleared does not undo the user's archive", async () => {
+  const f = queueFixture();
+  f.record.runningRunId = "run";
+  f.record.status = "running";
+  await f.supervisor.replaceQueuedMessages(f.record.ref, [queued("q1", "first")]);
+  // Stop clears the queue; the user then archives; an edit of q1 started before Stop lands.
+  f.record.queuedMessages = [];
+  await f.supervisor.archiveSession(f.record.ref);
+  const archivedAt = f.record.archivedAt;
+  await f.supervisor.replaceQueuedMessages(f.record.ref, [queued("q1", "first, edited")]);
   assert.equal(f.record.archivedAt, archivedAt);
 });
