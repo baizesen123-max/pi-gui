@@ -127,7 +127,11 @@ interface OrchestrationOwnerHost {
     options?: { readonly deliverAs?: "steer" | "followUp"; readonly allowCommands?: boolean },
   ): Promise<DesktopAppState>;
   /** Sends or queues text without touching the receiving thread's draft or queue edit. */
-  deliverBackgroundInstruction(sessionRef: SessionRef, text: string): Promise<string | undefined>;
+  deliverBackgroundInstruction(
+    sessionRef: SessionRef,
+    text: string,
+    options: { readonly rollbackOnError: true },
+  ): Promise<string | undefined>;
 }
 
 export interface OrchestrationOwner {
@@ -846,6 +850,7 @@ async function sendMessageToThreadToolResult(
           },
           input.message,
         ),
+        { rollbackOnError: true },
       );
     } catch (error) {
       return sendMessageToThreadErrorResult(input.threadId, input.message, errorMessage(error));

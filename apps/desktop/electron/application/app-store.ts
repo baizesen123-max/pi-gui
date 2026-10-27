@@ -546,8 +546,8 @@ export class DesktopAppStore {
           attachments,
           submitOptions,
         ),
-      deliverBackgroundInstruction: (sessionRef, text) =>
-        this.conversationOwner.deliverBackgroundInstruction(sessionRef, text),
+      deliverBackgroundInstruction: (sessionRef, text, options) =>
+        this.conversationOwner.deliverBackgroundInstruction(sessionRef, text, options),
     });
 
     this.scheduledTaskOwner = createScheduledTaskOwner({

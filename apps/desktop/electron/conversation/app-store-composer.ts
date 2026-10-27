@@ -189,7 +189,11 @@ export interface ConversationOwner {
     attachments: readonly ComposerAttachment[],
     options?: { readonly rollbackOptimisticMessageOnError?: boolean },
   ): Promise<void>;
-  deliverBackgroundInstruction(sessionRef: SessionRef, text: string): Promise<string | undefined>;
+  deliverBackgroundInstruction(
+    sessionRef: SessionRef,
+    text: string,
+    options?: { readonly rollbackOnError?: boolean },
+  ): Promise<string | undefined>;
 }
 
 export function createConversationOwner(store: ConversationOwnerHost): ConversationOwner {
@@ -225,8 +229,8 @@ export function createConversationOwner(store: ConversationOwnerHost): Conversat
     cancelCurrentRun: (sessionRef) => cancelCurrentRun(store, sessionRef),
     sendMessageToSession: (sessionRef, text, attachments, options) =>
       sendMessageToSession(store, sessionRef, text, attachments, options),
-    deliverBackgroundInstruction: (sessionRef, text) =>
-      deliverBackgroundInstruction(store, sessionRef, text),
+    deliverBackgroundInstruction: (sessionRef, text, options) =>
+      deliverBackgroundInstruction(store, sessionRef, text, options),
   };
 }
 
@@ -728,6 +732,7 @@ async function deliverBackgroundInstruction(
   store: ComposerStore,
   sessionRef: SessionRef,
   text: string,
+  options: { readonly rollbackOnError?: boolean } = {},
 ): Promise<string | undefined> {
   const instruction = text.trim();
   if (!instruction) {
@@ -771,10 +776,23 @@ async function deliverBackgroundInstruction(
   store.publishSelectedTranscriptFor(sessionRef);
   clearActiveAssistantMessage(store.conversationState.activeAssistantMessageBySession, sessionRef);
   store.conversationState.sessionErrorsBySession.delete(key);
-  await store.driver.sendUserMessage(sessionRef, {
-    text: instruction,
-    attachments: [],
-  });
+  try {
+    await store.driver.sendUserMessage(sessionRef, {
+      text: instruction,
+      attachments: [],
+    });
+  } catch (error) {
+    // A caller that reports the failure and may retry must not leave an undelivered row.
+    // A scheduled run keeps it, labelled with the run's error.
+    if (!options.rollbackOnError) throw error;
+    const transcript = store.conversationState.transcriptCache.get(key) ?? [];
+    store.conversationState.transcriptCache.set(
+      key,
+      transcript.filter((message) => message.id !== optimisticMessageId),
+    );
+    store.publishSelectedTranscriptFor(sessionRef);
+    throw error;
+  }
   return optimisticMessageId;
 }
 
