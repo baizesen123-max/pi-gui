@@ -232,6 +232,8 @@ interface ManagedSessionRecord {
    * the visible run first, while extension agent_settled handlers still run.
    */
   runAwaitingSettle: boolean;
+  /** The user stopped the run in runAwaitingSettle; only its agent_settled clears this. */
+  stopBeforeSettle: boolean;
   queuedMessages: SessionQueuedMessage[];
   /** Taken off the queue to start a turn; shown in the transcript when pi starts it. */
   startingQueuedMessage: SessionQueuedMessage | undefined;
@@ -1447,6 +1449,7 @@ export class SessionSupervisor {
     }
 
     record.cancellationRequested = true;
+    if (record.runAwaitingSettle) record.stopBeforeSettle = true;
     if (record.promptStarting && !record.session.isStreaming) {
       record.abortOnRunStart = true;
     }
@@ -1824,6 +1827,7 @@ export class SessionSupervisor {
       pendingRunOutcome: undefined,
       stoppedReplyId: undefined,
       runAwaitingSettle: false,
+      stopBeforeSettle: false,
       queuedMessages: [],
       startingQueuedMessage: undefined,
       queuedStartScheduled: false,
@@ -2054,6 +2058,7 @@ export class SessionSupervisor {
     record.session = session;
     // The old session's agent_settled will not reach this record any more.
     record.runAwaitingSettle = session.isStreaming;
+    record.stopBeforeSettle = false;
     record.sessionFile = session.sessionFile ?? session.sessionManager.getSessionFile();
     record.unsubscribeAgent?.();
     record.unsubscribeAgent = session.subscribe((event) => {
@@ -2912,10 +2917,11 @@ export class SessionSupervisor {
           : record.pendingRunOutcome;
         record.pendingRunOutcome = undefined;
         // pi captures `aborted` before awaiting extension agent_settled handlers, so a Stop
-        // the driver accepted during them counts too.
-        const stopped = event.aborted || record.cancellationRequested;
+        // the driver accepted during them counts too, even if another prompt came since.
+        const stopped = event.aborted || record.stopBeforeSettle;
         record.cancellationRequested = false;
         record.runAwaitingSettle = false;
+        record.stopBeforeSettle = false;
         this.markStoppedReply(
           record,
           stopped && record.session
