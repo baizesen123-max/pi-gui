@@ -37,6 +37,7 @@ import type {
   SessionEventListener,
   SessionModelSelection,
   SessionRef,
+  SessionRunOutcome,
   SessionPlanLimits,
   SessionSnapshot,
   SessionUsageSnapshot,
@@ -110,6 +111,7 @@ import {
   transcriptItemFromPinEntry,
   customMessageTranscriptItem,
   isHiddenCustomMessage,
+  lastRunOutcome,
   truncate,
   workspaceToRef,
   type RunOutcome,
@@ -226,6 +228,8 @@ interface ManagedSessionRecord {
   queuedStartRecheck: boolean;
   /** Sends accepted but still awaiting reload settlement, before promptStarting is set. */
   sendsSettling: number;
+  /** Queue changes accepted but not yet applied (see queueStep). */
+  queueStepsPending: number;
   /**
    * Queued messages that already started. The app's list can still hold one for a moment, and a
    * queue change sent from it must not queue it again.
@@ -962,7 +966,10 @@ export class SessionSupervisor {
    * or open host dialog. It never stops or drains work. The caller decides whether
    * the session's work is finished; this guard only makes the write atomic.
    */
-  async archiveSessionIfIdle(sessionRef: SessionRef): Promise<void> {
+  async archiveSessionIfIdle(
+    sessionRef: SessionRef,
+    expect: { readonly lastRunOutcome?: SessionRunOutcome } = {},
+  ): Promise<void> {
     const record = await this.ensureRecord(sessionRef);
     const session = this.requireSession(record);
     if (
@@ -971,6 +978,7 @@ export class SessionSupervisor {
       record.queuedMessages.length > 0 ||
       record.queuedStartScheduled ||
       record.sendsSettling > 0 ||
+      record.queueStepsPending > 0 ||
       session.pendingMessageCount > 0 ||
       record.startingQueuedMessage ||
       record.pendingHostUiRequests.size > 0
@@ -978,6 +986,13 @@ export class SessionSupervisor {
       throw new Error(
         "The thread is running, waiting, or has queued messages; it was not archived.",
       );
+    }
+    // The caller judged the work from facts it saw earlier; refuse if they changed since.
+    if (
+      expect.lastRunOutcome !== undefined &&
+      lastRunOutcome(session.messages) !== expect.lastRunOutcome
+    ) {
+      throw new Error("The thread's last run changed since it was checked; it was not archived.");
     }
     // updateArchivedState sets the loaded record synchronously before its first
     // await, so a new prompt cannot slip between the busy check and the mutation.
@@ -1245,12 +1260,16 @@ export class SessionSupervisor {
     record: ManagedSessionRecord,
     step: (session: AgentSession) => Promise<void>,
   ): Promise<void> {
+    record.queueStepsPending += 1;
     const run = record.piQueueSync
       .catch(() => undefined)
       .then(async () => {
         const session = record.session;
         if (!session || record.closed) return;
         await step(session);
+      })
+      .finally(() => {
+        record.queueStepsPending -= 1;
       });
     record.piQueueSync = run;
     return run;
@@ -1747,6 +1766,7 @@ export class SessionSupervisor {
       piQueueSync: Promise.resolve(),
       queuedStartRecheck: false,
       sendsSettling: 0,
+      queueStepsPending: 0,
       startedQueuedMessageIds: new Set(),
       queuedStartFailed: false,
       closed: false,

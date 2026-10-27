@@ -92,8 +92,14 @@ interface OrchestrationOwnerHost {
   ensureSessionReady(sessionRef: SessionRef): Promise<SessionSnapshot | undefined>;
   /** The driver's report of how the session's newest assistant reply ended. */
   lastRunOutcome(sessionRef: SessionRef): SessionRunOutcome | undefined;
-  /** Archives only if the driver confirms nothing is in flight; throws otherwise. */
-  archiveIdleSession(sessionRef: SessionRef): Promise<void>;
+  /**
+   * Archives only if the driver confirms nothing is in flight and the last run outcome
+   * is still `expect.lastRunOutcome`; throws otherwise.
+   */
+  archiveIdleSession(
+    sessionRef: SessionRef,
+    expect: { readonly lastRunOutcome: SessionRunOutcome },
+  ): Promise<void>;
   ensureSessionSubscription(sessionRef: SessionRef): Promise<void>;
   subscribeToSessionEvents(
     listener: (event: SessionDriverEvent, state: DesktopAppState) => void | Promise<void>,
@@ -679,8 +685,8 @@ function ownDirectChild(
 
 /**
  * The app decides that a child's work is finished; the driver only guarantees that
- * nothing is in flight at the moment of the write. A child whose turn ends while we
- * check is still finished, and one that starts a turn is refused by the driver.
+ * nothing is in flight and the run outcome it saw is unchanged at the moment of the
+ * write. A child that starts or stops a turn after the check is refused by the driver.
  */
 async function archiveFinishedChild(
   store: OrchestrationOwnerHost,
@@ -701,7 +707,8 @@ async function archiveFinishedChild(
   await store.ensureSessionReady(ref);
   const unfinished = unfinishedChildReason(store, ref);
   if (unfinished) throw new Error(`${unfinished}; it was not archived.`);
-  await store.archiveIdleSession(ref);
+  // The app's copy of the outcome can trail the runtime; the driver re-checks it at the write.
+  await store.archiveIdleSession(ref, { lastRunOutcome: "completed" });
 }
 
 /**

@@ -249,7 +249,10 @@ export function Sidebar(props: SidebarProps) {
     // Reveal once per rename; later list changes should not reopen groups.
   }, [renameSessionId]);
 
-  // Reveal ancestors when another surface selects or renames a nested thread.
+  // Reveal ancestors when another surface selects or renames a nested thread. It runs
+  // once per target and ancestor path, so a parent the user collapses stays collapsed
+  // through later state pushes; a path that changes (links arriving late) reveals again.
+  const revealedPathRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const entries = new Map(
       threadSidebarModel.recencyOrder.map((entry) => [sessionThreadKey(entry), entry]),
@@ -257,11 +260,15 @@ export function Sidebar(props: SidebarProps) {
     let entry = renameSessionId
       ? threadSidebarModel.recencyOrder.find((item) => item.session.id === renameSessionId)
       : entries.get(`${selectedWorkspace?.id}:${selectedSession?.id}`);
+    const target = entry ? sessionThreadKey(entry) : "";
     const ancestors = new Set<string>();
     while (entry?.parentKey && !ancestors.has(entry.parentKey)) {
       ancestors.add(entry.parentKey);
       entry = entries.get(entry.parentKey);
     }
+    const path = [target, ...ancestors].join("\n");
+    if (revealedPathRef.current === path) return;
+    revealedPathRef.current = path;
     setCollapsedThreads((current) => {
       if (![...ancestors].some((key) => current.has(key))) return current;
       return new Set([...current].filter((key) => !ancestors.has(key)));

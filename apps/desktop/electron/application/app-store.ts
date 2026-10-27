@@ -492,8 +492,8 @@ export class DesktopAppStore {
         orchestrationChildren: structuredClone(this.state.orchestrationChildren),
       }),
       lastRunOutcome: (ref) => this.sessionState.lastRunOutcomeBySession.get(sessionKey(ref)),
-      archiveIdleSession: async (ref) => {
-        await this.workspaceOwner.archiveIdleSession(ref);
+      archiveIdleSession: async (ref, expect) => {
+        await this.workspaceOwner.archiveIdleSession(ref, expect);
       },
       orchestrationChildren: () => this.state.orchestrationChildren,
       replaceOrchestrationChildren: (children) => {

@@ -19,6 +19,11 @@ function fixture() {
     queuedStartScheduled: false,
     queuedStartRecheck: false,
     sendsSettling: 0,
+    queueStepsPending: 0,
+    piQueueSync: Promise.resolve() as Promise<unknown>,
+    startedQueuedMessageIds: new Set<string>(),
+    reloadInFlight: undefined as Promise<void> | undefined,
+    reloadPending: false,
     queuedMessages: [] as unknown[],
     startingQueuedMessage: undefined as unknown,
     pendingHostUiRequests: new Map(),
@@ -32,7 +37,14 @@ function fixture() {
       isStreaming: false,
       isCompacting: false,
       pendingMessageCount: 0,
-      messages: [{ role: "assistant", stopReason: "stop", content: "done" }],
+      messages: [{ role: "assistant", stopReason: "stop", content: "done" }] as {
+        role: string;
+        stopReason?: string;
+        content: string;
+      }[],
+      getSteeringMessages: () => [],
+      getFollowUpMessages: () => [],
+      clearQueue: () => undefined,
     },
   };
   const supervisor = new SessionSupervisor({
@@ -128,6 +140,46 @@ await test("idle archive leaves the finished-work decision to the caller", async
 await test("a leftover queue recheck hint after the queue drained does not block archiving", async () => {
   const f = fixture();
   f.record.queuedStartRecheck = true;
+  await f.supervisor.archiveSessionIfIdle(f.record.ref);
+  assert.ok(f.record.archivedAt);
+});
+
+await test("idle archive refuses when the run outcome changed since the caller checked", async () => {
+  const f = fixture();
+  f.record.session.messages = [{ role: "assistant", stopReason: "aborted", content: "partial" }];
+  await assert.rejects(
+    f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" }),
+    /last run changed/,
+  );
+  assert.equal(f.writes.length, 0);
+  f.record.session.messages = [{ role: "assistant", stopReason: "stop", content: "done" }];
+  await f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" });
+  assert.ok(f.record.archivedAt);
+});
+
+await test("idle archive refuses a send that is still waiting for a reload to settle", async () => {
+  const f = fixture();
+  let finishReload!: () => void;
+  f.record.reloadInFlight = new Promise<void>((resolve) => {
+    finishReload = resolve;
+  });
+  const sending = f.supervisor.sendUserMessage(f.record.ref, { text: "one more thing" });
+  await assert.rejects(f.supervisor.archiveSessionIfIdle(f.record.ref), /not archived/);
+  assert.equal(f.record.archivedAt, undefined);
+  assert.equal(f.writes.length, 0);
+  f.record.reloadInFlight = undefined;
+  finishReload();
+  await sending.catch(() => undefined);
+  assert.equal(f.record.sendsSettling, 0);
+});
+
+await test("idle archive refuses while a queue change is still being applied", async () => {
+  const f = fixture();
+  const replacing = f.supervisor.replaceQueuedMessages(f.record.ref, []);
+  await assert.rejects(f.supervisor.archiveSessionIfIdle(f.record.ref), /not archived/);
+  assert.equal(f.record.archivedAt, undefined);
+  await replacing;
+  assert.equal(f.record.queueStepsPending, 0);
   await f.supervisor.archiveSessionIfIdle(f.record.ref);
   assert.ok(f.record.archivedAt);
 });

@@ -110,9 +110,20 @@ test("children nest under their parent; the archive tool archives only finished 
     await expect(group.locator(".session-row")).toHaveCount(3);
     await expect(group).toContainText(done.title);
     await expect(group).not.toContainText(foreign.title);
+    // Collapse the parent of the selected child; later state pushes must not reopen it.
+    await selectSession(window, done.title);
     await window
       .getByRole("button", { name: "Collapse children of 主任务 A", exact: true })
       .click();
+    await expect(group).toHaveCount(0);
+    const otherParentRow = window.locator(
+      `.session-row[data-session-id="${otherParent.sessionId}"]`,
+    );
+    await otherParentRow.hover();
+    await otherParentRow.getByRole("button", { name: /^Pin / }).click();
+    await otherParentRow.hover();
+    await otherParentRow.getByRole("button", { name: /^Unpin / }).click();
+    await expect(otherParentRow.getByRole("button", { name: /^Pin / })).toBeAttached();
     await expect(group).toHaveCount(0);
     await window.getByRole("button", { name: "Expand children of 主任务 A", exact: true }).click();
     await expect(group).toBeVisible();
@@ -134,6 +145,9 @@ test("children nest under their parent; the archive tool archives only finished 
     const parentDraft = "主任务草稿：不要改变正在运行的工作。";
     await window.getByTestId("composer").fill(parentDraft);
     await window.screenshot({ path: info.outputPath("hierarchy.png") });
+    // The user is looking at the finished child when the parent's agent archives it.
+    await selectSession(window, done.title);
+    await expect(window.getByTestId("composer")).toHaveValue(childDraft);
     const parentRef = { workspaceId: workspacePath, sessionId: parent.sessionId };
     const result = await runOrchestrationRuntimeTool(harness, {
       sessionRef: parentRef,
@@ -159,6 +173,11 @@ test("children nest under their parent; the archive tool archives only finished 
       { threadId: parent.sessionId, reason: notOwn },
     ]);
     await expect(group.locator(".session-row")).toHaveCount(2);
+    // The agent's archive leaves the user's selection, transcript, and draft alone.
+    expect((await getDesktopState(window)).selectedSessionId).toBe(done.sessionId);
+    await expect(window.getByTestId("composer")).toHaveValue(childDraft);
+    expect(await getSelectedTranscript(window)).toEqual(history);
+    await selectSession(window, parent.title);
     await expect(window.getByTestId("composer")).toHaveValue(parentDraft);
     const listed = await runOrchestrationRuntimeTool(harness, {
       sessionRef: parentRef,

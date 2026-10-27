@@ -18,6 +18,7 @@ import type {
   SessionEventListener,
   SessionModelSelection,
   SessionRef,
+  SessionRunOutcome,
   SessionSnapshot,
   SessionMessageInput,
   Unsubscribe,
@@ -74,8 +75,11 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.archiveSession(sessionRef);
   }
 
-  archiveSessionIfIdle(sessionRef: SessionRef): Promise<void> {
-    return this.supervisor.archiveSessionIfIdle(sessionRef);
+  archiveSessionIfIdle(
+    sessionRef: SessionRef,
+    expect?: { readonly lastRunOutcome?: SessionRunOutcome },
+  ): Promise<void> {
+    return this.supervisor.archiveSessionIfIdle(sessionRef, expect);
   }
 
   unarchiveSession(sessionRef: SessionRef): Promise<void> {
