@@ -18,6 +18,7 @@ function fixture() {
     extensionCommandsRunning: 0,
     queuedStartScheduled: false,
     queuedStartRecheck: false,
+    sendsSettling: 0,
     queuedMessages: [] as unknown[],
     startingQueuedMessage: undefined as unknown,
     pendingHostUiRequests: new Map(),
@@ -88,6 +89,9 @@ const busyCases: Record<string, (record: ReturnType<typeof fixture>["record"]) =
   "scheduled queue start": (r) => {
     r.queuedStartScheduled = true;
   },
+  "send waiting for reloads to settle": (r) => {
+    r.sendsSettling = 1;
+  },
   "taken queue entry": (r) => {
     r.startingQueuedMessage = { text: "next" };
   },
@@ -118,6 +122,12 @@ await test("idle archive checks after awaiting session loading, not an earlier i
 await test("idle archive leaves the finished-work decision to the caller", async () => {
   const f = fixture();
   f.record.session.messages = [{ role: "assistant", stopReason: "aborted", content: "partial" }];
+  await f.supervisor.archiveSessionIfIdle(f.record.ref);
+  assert.ok(f.record.archivedAt);
+});
+await test("a leftover queue recheck hint after the queue drained does not block archiving", async () => {
+  const f = fixture();
+  f.record.queuedStartRecheck = true;
   await f.supervisor.archiveSessionIfIdle(f.record.ref);
   assert.ok(f.record.archivedAt);
 });

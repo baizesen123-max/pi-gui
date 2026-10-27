@@ -224,6 +224,8 @@ interface ManagedSessionRecord {
   piQueueSync: Promise<void>;
   /** An idle point arrived while a start was scheduled; check again when it finishes. */
   queuedStartRecheck: boolean;
+  /** Sends accepted but still awaiting reload settlement, before promptStarting is set. */
+  sendsSettling: number;
   /**
    * Queued messages that already started. The app's list can still hold one for a moment, and a
    * queue change sent from it must not queue it again.
@@ -968,7 +970,7 @@ export class SessionSupervisor {
       record.status !== "idle" ||
       record.queuedMessages.length > 0 ||
       record.queuedStartScheduled ||
-      record.queuedStartRecheck ||
+      record.sendsSettling > 0 ||
       session.pendingMessageCount > 0 ||
       record.startingQueuedMessage ||
       record.pendingHostUiRequests.size > 0
@@ -988,9 +990,18 @@ export class SessionSupervisor {
 
   async sendUserMessage(sessionRef: SessionRef, input: SessionMessageInput): Promise<void> {
     const record = await this.ensureRecord(sessionRef);
-    await this.settleReloadsBeforeSend(record);
-    record.queuedStartFailed = false;
-    return this.sendReadyMessage(record, input);
+    // Counted until the send marks the session busy, so an idle-only archive cannot
+    // slip in while it waits for reloads to settle.
+    record.sendsSettling += 1;
+    let sending: Promise<void>;
+    try {
+      await this.settleReloadsBeforeSend(record);
+      record.queuedStartFailed = false;
+      sending = this.sendReadyMessage(record, input);
+    } finally {
+      record.sendsSettling -= 1;
+    }
+    return sending;
   }
 
   /** Synchronous until the session counts as busy (promptStarting, or a command running). */
@@ -1735,6 +1746,7 @@ export class SessionSupervisor {
       queuedStartScheduled: false,
       piQueueSync: Promise.resolve(),
       queuedStartRecheck: false,
+      sendsSettling: 0,
       startedQueuedMessageIds: new Set(),
       queuedStartFailed: false,
       closed: false,
