@@ -656,3 +656,38 @@ await test(
     assert.equal((await h.driver.openSession(h.ref)).archivedAt, undefined);
   },
 );
+
+await test(
+  "a Stop while extension agent_settled handlers still run is not archived, then reads as stopped",
+  { timeout: 15000 },
+  async (t) => {
+    const settling = gate();
+    const finishSettling = gate();
+    const h = await fixture(
+      t,
+      (model) => response(model, "Review done"),
+      (pi) => {
+        pi.on("agent_settled", async () => {
+          settling.release();
+          await finishSettling.promise;
+        });
+      },
+    );
+    const sending = h.driver.sendUserMessage(h.ref, { text: "Review the PR" });
+    await settling.promise;
+    // pi already counts the run as over; the user's Stop ends the visible run.
+    await h.driver.cancelCurrentRun(h.ref);
+    await assert.rejects(
+      h.driver.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }),
+      /not archived/,
+    );
+    finishSettling.release();
+    await sending;
+    await h.until(() => h.rawEvents.some((event) => event.type === "agent_settled"));
+    assert.equal((await h.driver.openSession(h.ref)).lastRunOutcome, "stopped");
+    await assert.rejects(
+      h.driver.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }),
+      /last run changed/,
+    );
+  },
+);

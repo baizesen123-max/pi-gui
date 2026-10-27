@@ -122,6 +122,9 @@ const busyCases: Record<string, (record: ReturnType<typeof fixture>["record"]) =
   "taken queue entry": (r) => {
     r.startingQueuedMessage = { text: "next" };
   },
+  "run stopped but not yet settled by pi": (r) => {
+    Object.assign(r, { runAwaitingSettle: true });
+  },
   "pending dialog": (r) => {
     r.pendingHostUiRequests.set("permission", {});
   },

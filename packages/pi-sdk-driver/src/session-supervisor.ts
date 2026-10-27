@@ -227,6 +227,11 @@ interface ManagedSessionRecord {
    * run starts. Saved in the session catalog so it survives a restart.
    */
   stoppedReplyId: string | undefined;
+  /**
+   * pi started a run (agent_start) and has not published agent_settled yet. A Stop can end
+   * the visible run first, while extension agent_settled handlers still run.
+   */
+  runAwaitingSettle: boolean;
   queuedMessages: SessionQueuedMessage[];
   /** Taken off the queue to start a turn; shown in the transcript when pi starts it. */
   startingQueuedMessage: SessionQueuedMessage | undefined;
@@ -995,6 +1000,7 @@ export class SessionSupervisor {
     const session = this.requireSession(record);
     if (
       isRecordBusy(record) ||
+      record.runAwaitingSettle ||
       record.status !== "idle" ||
       record.queuedMessages.length > 0 ||
       record.queuedStartScheduled ||
@@ -1817,6 +1823,7 @@ export class SessionSupervisor {
       abortOnRunStart: false,
       pendingRunOutcome: undefined,
       stoppedReplyId: undefined,
+      runAwaitingSettle: false,
       queuedMessages: [],
       startingQueuedMessage: undefined,
       queuedStartScheduled: false,
@@ -2045,6 +2052,8 @@ export class SessionSupervisor {
     }
 
     record.session = session;
+    // The old session's agent_settled will not reach this record any more.
+    record.runAwaitingSettle = session.isStreaming;
     record.sessionFile = session.sessionFile ?? session.sessionManager.getSessionFile();
     record.unsubscribeAgent?.();
     record.unsubscribeAgent = session.subscribe((event) => {
@@ -2754,6 +2763,7 @@ export class SessionSupervisor {
         record.runningRunId ??= crypto.randomUUID();
         record.pendingRunOutcome = undefined;
         this.markStoppedReply(record, undefined);
+        record.runAwaitingSettle = true;
         record.status = "running";
         return [sessionUpdatedEvent(record)];
       case "turn_start":
@@ -2905,6 +2915,7 @@ export class SessionSupervisor {
         // the driver accepted during them counts too.
         const stopped = event.aborted || record.cancellationRequested;
         record.cancellationRequested = false;
+        record.runAwaitingSettle = false;
         this.markStoppedReply(
           record,
           stopped && record.session
