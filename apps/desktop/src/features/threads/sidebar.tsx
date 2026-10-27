@@ -253,7 +253,7 @@ export function Sidebar(props: SidebarProps) {
   // Reveal ancestors when another surface selects or renames a nested thread. It runs
   // once per target and ancestor path, so a parent the user collapses stays collapsed
   // through later state pushes; a path that changes (links arriving late) reveals again.
-  const revealedPathRef = useRef<string | undefined>(undefined);
+  const revealedPathRef = useRef<{ select?: string; rename?: string }>({});
   useEffect(() => {
     const entries = new Map(
       threadSidebarModel.recencyOrder.map((entry) => [sessionThreadKey(entry), entry]),
@@ -267,10 +267,14 @@ export function Sidebar(props: SidebarProps) {
       ancestors.add(entry.parentKey);
       entry = entries.get(entry.parentKey);
     }
-    // A rename of the already selected thread is a new reveal: it needs its row mounted.
-    const path = [renameSessionId ? "rename" : "select", target, ...ancestors].join("\n");
-    if (revealedPathRef.current === path) return;
-    revealedPathRef.current = path;
+    // Rename and selection reveal separately: renaming the selected thread needs its row
+    // mounted, and ending a rename must not reopen what the user collapsed since.
+    const path = [target, ...ancestors].join("\n");
+    const kind = renameSessionId ? "rename" : "select";
+    // Each rename is its own reveal, even of the same thread.
+    if (!renameSessionId) revealedPathRef.current = { select: revealedPathRef.current.select };
+    if (revealedPathRef.current[kind] === path) return;
+    revealedPathRef.current = { ...revealedPathRef.current, [kind]: path };
     setCollapsedThreads((current) => {
       if (![...ancestors].some((key) => current.has(key))) return current;
       return new Set([...current].filter((key) => !ancestors.has(key)));
