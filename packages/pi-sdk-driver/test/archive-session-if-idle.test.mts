@@ -282,3 +282,74 @@ await test("a late edit of a message Stop cleared does not undo the user's archi
   await f.supervisor.replaceQueuedMessages(f.record.ref, [queued("q1", "first, edited")]);
   assert.equal(f.record.archivedAt, archivedAt);
 });
+
+function markFixture(setStoppedReplyId: (replyId: string | undefined) => Promise<boolean>) {
+  const f = fixture();
+  Object.assign(
+    (f.supervisor as unknown as { catalogs: { sessions: Record<string, unknown> } }).catalogs
+      .sessions,
+    {
+      setStoppedReplyId: (_ref: unknown, replyId: string | undefined) => setStoppedReplyId(replyId),
+    },
+  );
+  const internals = f.supervisor as unknown as {
+    markStoppedReply(record: unknown, replyId: string | undefined): void;
+    persistSnapshot(record: unknown): Promise<void>;
+  };
+  return { ...f, internals };
+}
+
+await test("a stopped-run mark whose write failed is written again with the next snapshot", async () => {
+  const stored: (string | undefined)[] = [];
+  let fail = true;
+  const f = markFixture(async (replyId) => {
+    if (fail) throw new Error("disk full");
+    stored.push(replyId);
+    return true;
+  });
+  f.internals.markStoppedReply(f.record, "reply-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(stored, []);
+  fail = false;
+  await f.internals.persistSnapshot(f.record);
+  assert.deepEqual(stored, ["reply-1"]);
+  await f.internals.persistSnapshot(f.record);
+  assert.deepEqual(stored, ["reply-1"], "once stored, it is not written again");
+});
+
+await test("a stopped-run mark for a session with no catalog entry yet waits for its entry", async () => {
+  let hasEntry = false;
+  const stored: (string | undefined)[] = [];
+  const f = markFixture(async (replyId) => {
+    if (!hasEntry) return false;
+    stored.push(replyId);
+    return true;
+  });
+  f.internals.markStoppedReply(f.record, "reply-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  hasEntry = true;
+  await f.internals.persistSnapshot(f.record);
+  assert.deepEqual(stored, ["reply-1"]);
+});
+
+await test("a superseded stopped-run mark is not written over the newer one", async () => {
+  const stored: (string | undefined)[] = [];
+  let fail = true;
+  const f = markFixture(async (replyId) => {
+    if (fail) throw new Error("disk full");
+    stored.push(replyId);
+    return true;
+  });
+  const internals = f.internals as typeof f.internals & {
+    unsavedStoppedReplies: Map<string, unknown>;
+    saveStoppedReply(mark: unknown): Promise<void>;
+  };
+  f.internals.markStoppedReply(f.record, "reply-1");
+  await new Promise((resolve) => setImmediate(resolve));
+  const stale = [...internals.unsavedStoppedReplies.values()][0];
+  fail = false;
+  f.internals.markStoppedReply(f.record, "reply-2");
+  await new Promise((resolve) => setImmediate(resolve));
+  await internals.saveStoppedReply(stale);
+  assert.deepEqual(stored, ["reply-2"]);
+});

@@ -171,16 +171,32 @@ export class JsonCatalogStore implements SessionFileCatalogStorage {
         );
         // The driver persists a session on every agent event, mostly with nothing changed;
         // skipping those writes keeps fsyncs from delaying the events behind them.
-        if (index >= 0 && areSessionEntriesEqual(state.sessions[index]!, entry)) {
+        const next = withStoredStoppedReply(entry, state.sessions[index]);
+        if (index >= 0 && areSessionEntriesEqual(state.sessions[index]!, next)) {
           return false;
         }
-        const next = cloneSessionEntry(entry);
         if (index >= 0) {
           state.sessions[index] = next;
         } else {
           state.sessions.push(next);
         }
       });
+    },
+    setStoppedReplyId: async (
+      sessionRef: SessionRef,
+      replyId: string | undefined,
+    ): Promise<boolean> => {
+      let found = false;
+      await this.mutateState((state) => {
+        const entry = state.sessions.find(
+          (session) => sessionKey(session.sessionRef) === sessionKey(sessionRef),
+        );
+        found = entry !== undefined;
+        if (!entry || entry.stoppedReplyId === replyId) return false;
+        if (replyId === undefined) delete entry.stoppedReplyId;
+        else entry.stoppedReplyId = replyId;
+      });
+      return found;
     },
     deleteSession: async (sessionRef: SessionRef): Promise<void> => {
       await this.mutateState((state) => {
@@ -216,7 +232,13 @@ export class JsonCatalogStore implements SessionFileCatalogStorage {
     sessionFiles: Readonly<Record<string, string>>,
   ): Promise<void> {
     await this.mutateState((state) => {
-      const nextEntries = entries.map(cloneSessionEntry);
+      const stored = new Map(
+        state.sessions.map((session) => [sessionKey(session.sessionRef), session]),
+      );
+      // Read at write time: a mark set while the caller built `entries` must survive.
+      const nextEntries = entries.map((entry) =>
+        withStoredStoppedReply(entry, stored.get(sessionKey(entry.sessionRef))),
+      );
       const nextKeys = new Set(nextEntries.map((entry) => sessionKey(entry.sessionRef)));
 
       state.sessions = [
@@ -363,6 +385,17 @@ function areWorktreeListsEqual(
 
   const sortedRight = [...right].sort(compareWorktreeEntries);
   return left.every((entry, index) => areWorktreeEntriesEqual(entry, sortedRight[index]));
+}
+
+/** A copy of `entry` carrying the stored entry's stoppedReplyId (see setStoppedReplyId). */
+function withStoredStoppedReply(
+  entry: SessionCatalogEntry,
+  stored: SessionCatalogEntry | undefined,
+): SessionCatalogEntry {
+  const next = cloneSessionEntry(entry);
+  delete next.stoppedReplyId;
+  if (stored?.stoppedReplyId !== undefined) next.stoppedReplyId = stored.stoppedReplyId;
+  return next;
 }
 
 function areSessionEntriesEqual(left: SessionCatalogEntry, right: SessionCatalogEntry): boolean {

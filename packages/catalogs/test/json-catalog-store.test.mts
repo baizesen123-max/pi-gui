@@ -316,7 +316,7 @@ await test("session writes that change nothing leave the catalog file alone", as
   });
 });
 
-await test("a stopped-reply mark survives a reload and clears when a later write omits it", async () => {
+await test("only setStoppedReplyId changes a stopped-reply mark; upserts and syncs keep it", async () => {
   await withTempDir(async (dir) => {
     const catalogFilePath = join(dir, "catalogs.json");
     const entry = {
@@ -326,13 +326,21 @@ await test("a stopped-reply mark survives a reload and clears when a later write
       updatedAt: timestamp,
       status: "idle" as const,
     };
-    await new JsonCatalogStore({ catalogFilePath }).sessions.upsertSession({
-      ...entry,
-      stoppedReplyId: "reply-1",
-    });
+    const store = new JsonCatalogStore({ catalogFilePath });
+    await store.sessions.upsertSession(entry);
+    // A workspace sync built its entries before the mark was set, then writes them.
+    const builtBeforeStop = [{ ...entry, title: "Child (synced)" }];
+    await store.sessions.setStoppedReplyId(entry.sessionRef, "reply-1");
+    await store.replaceWorkspaceSessions("ws", builtBeforeStop, {});
+    await store.sessions.upsertSession({ ...entry, title: "Child (renamed)" });
     const reopened = new JsonCatalogStore({ catalogFilePath });
+    const kept = await reopened.sessions.getSession(entry.sessionRef);
+    assert.equal(kept?.title, "Child (renamed)");
+    assert.equal(kept?.stoppedReplyId, "reply-1");
+    // A writer cannot set or clear it through an upsert or a sync either.
+    await reopened.sessions.upsertSession({ ...entry, stoppedReplyId: "other" });
     assert.equal((await reopened.sessions.getSession(entry.sessionRef))?.stoppedReplyId, "reply-1");
-    await reopened.sessions.upsertSession(entry);
+    await reopened.sessions.setStoppedReplyId(entry.sessionRef, undefined);
     const cleared = new JsonCatalogStore({ catalogFilePath });
     assert.equal((await cleared.sessions.getSession(entry.sessionRef))?.stoppedReplyId, undefined);
   });

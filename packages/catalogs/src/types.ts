@@ -45,7 +45,8 @@ export interface SessionCatalogEntry {
   /**
    * The last run was stopped (pi reported it aborted) while this reply entry was the newest
    * on its branch. Kept here because pi's session file does not record a Stop that left no
-   * aborted reply. It only counts while that entry is still the newest reply.
+   * aborted reply. It only counts while that entry is still the newest reply. Written only
+   * by setStoppedReplyId; session upserts and workspace syncs keep the stored value.
    */
   stoppedReplyId?: string;
 }

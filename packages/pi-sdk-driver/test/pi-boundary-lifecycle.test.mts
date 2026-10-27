@@ -11,6 +11,8 @@ import type {
   ExtensionFactory,
 } from "@earendil-works/pi-coding-agent";
 import type { SessionDriverEvent } from "@pi-gui/session-driver";
+import type { SessionFileCatalogStorage } from "@pi-gui/catalogs";
+import { JsonCatalogStore } from "@pi-gui/catalogs/node";
 import { PiSdkDriver } from "../dist/pi-sdk-driver.js";
 import { createAgentSessionRuntimeWithNpmFallback } from "../dist/npm-package-fallback.js";
 
@@ -60,6 +62,7 @@ async function fixture(
   t: TestContext,
   streamFunction: StreamFunction,
   extension?: ExtensionFactory,
+  wrapCatalog?: (catalog: JsonCatalogStore) => SessionFileCatalogStorage,
 ) {
   const root = await mkdtemp(join(tmpdir(), "pi-gui-boundary-lifecycle-"));
   const agentDir = join(root, "agent");
@@ -106,9 +109,10 @@ async function fixture(
   const events: SessionDriverEvent[] = [];
   const changed = new Set<() => void>();
   let runtime!: AgentSessionRuntime;
+  const catalog = new JsonCatalogStore({ catalogFilePath: join(root, "catalogs.json") });
   const driver = new PiSdkDriver({
     agentDir,
-    catalogFilePath: join(root, "catalogs.json"),
+    catalogStorage: wrapCatalog ? wrapCatalog(catalog) : catalog,
     createAgentSessionRuntimeImpl: async (options) => {
       runtime = await createAgentSessionRuntimeWithNpmFallback({
         ...options,
@@ -548,5 +552,66 @@ await test(
     assert.equal(finished.status, "idle");
     assert.equal(finished.lastRunOutcome, "completed");
     assert.doesNotMatch(await readFile(join(h.root, "catalogs.json"), "utf8"), /stoppedReplyId/);
+  },
+);
+
+await test(
+  "a Stop saved during a workspace sync survives when an extension switches session before the sync writes",
+  { timeout: 15000 },
+  async (t) => {
+    const beforeSettle = gate();
+    const continueRun = gate();
+    let holdReplace: ReturnType<typeof gate> | undefined;
+    let replaceReached!: () => void;
+    const replaceStarted = new Promise<void>((resolve) => {
+      replaceReached = resolve;
+    });
+    const h = await fixture(
+      t,
+      (model) => response(model, "Review in progress"),
+      (pi) => {
+        pi.registerCommand("fresh-thread", {
+          description: "Start a new session from an extension",
+          handler: async (_args, ctx) => {
+            await ctx.newSession();
+          },
+        });
+        pi.on("agent_before_settle", async () => {
+          beforeSettle.release();
+          await continueRun.promise;
+          return { continue: true };
+        });
+      },
+      (catalog) =>
+        Object.assign(Object.create(catalog) as JsonCatalogStore, {
+          replaceWorkspaceSessions: async (
+            ...args: Parameters<JsonCatalogStore["replaceWorkspaceSessions"]>
+          ) => {
+            if (holdReplace) {
+              replaceReached();
+              await holdReplace.promise;
+            }
+            return catalog.replaceWorkspaceSessions(...args);
+          },
+        }),
+    );
+    const sending = h.driver.sendUserMessage(h.ref, { text: "Review the PR" });
+    await beforeSettle.promise;
+    // The sync builds this session's entry now, before the Stop, and waits to write it.
+    holdReplace = gate();
+    const syncing = h.driver.syncWorkspace(h.workspacePath, "Boundary");
+    await replaceStarted;
+    const stopping = h.driver.cancelCurrentRun(h.ref);
+    continueRun.release();
+    await Promise.all([sending, stopping]);
+    // An extension moves the thread to a new session before the sync writes.
+    await h.driver.sendUserMessage(h.ref, { text: "/fresh-thread" });
+    holdReplace.release();
+    await syncing;
+
+    const restarted = h.restartedDriver();
+    const reopened = await restarted.openSession(h.ref);
+    assert.equal(reopened.lastRunOutcome, "stopped");
+    await assert.rejects(restarted.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }));
   },
 );
