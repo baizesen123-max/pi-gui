@@ -194,3 +194,15 @@ await test("a send that started after an archive landed brings the thread back",
     .catch(() => undefined);
   assert.equal(f.record.archivedAt, undefined);
 });
+
+await test("a queued message starting does not undo the user's archive", async () => {
+  const f = fixture();
+  await f.supervisor.archiveSession(f.record.ref);
+  const archivedAt = f.record.archivedAt;
+  assert.ok(archivedAt);
+  const supervisor = f.supervisor as unknown as {
+    sendReadyMessage(record: unknown, input: { text: string }): Promise<void>;
+  };
+  await supervisor.sendReadyMessage(f.record, { text: "queued follow-up" }).catch(() => undefined);
+  assert.equal(f.record.archivedAt, archivedAt);
+});

@@ -196,6 +196,9 @@ export interface SyncWorkspaceResult {
   readonly sessions: SessionCatalogSnapshot["sessions"];
 }
 
+/** A send as the supervisor runs it; only a direct send revives an archived thread. */
+type SendInput = SessionMessageInput & { readonly revivesArchived?: boolean };
+
 interface ManagedSessionRecord {
   ref: SessionRef;
   workspace: WorkspaceRef;
@@ -1012,7 +1015,7 @@ export class SessionSupervisor {
     try {
       await this.settleReloadsBeforeSend(record);
       record.queuedStartFailed = false;
-      sending = this.sendReadyMessage(record, input);
+      sending = this.sendReadyMessage(record, { ...input, revivesArchived: true });
     } finally {
       record.sendsSettling -= 1;
     }
@@ -1020,10 +1023,7 @@ export class SessionSupervisor {
   }
 
   /** Synchronous until the session counts as busy (promptStarting, or a command running). */
-  private async sendReadyMessage(
-    record: ManagedSessionRecord,
-    input: SessionMessageInput,
-  ): Promise<void> {
+  private async sendReadyMessage(record: ManagedSessionRecord, input: SendInput): Promise<void> {
     const session = this.requireSession(record);
     const isExtensionCommand = this.isExtensionCommand(session, input.text);
     if (input.extensionCommandOnly && !isExtensionCommand) {
@@ -1051,7 +1051,7 @@ export class SessionSupervisor {
   private async sendCheckedMessage(
     record: ManagedSessionRecord,
     session: AgentSession,
-    input: SessionMessageInput,
+    input: SendInput,
     isExtensionCommand: boolean,
   ): Promise<void> {
     const isQueuedMessage = session.isStreaming && !isExtensionCommand && Boolean(input.deliverAs);
@@ -1065,9 +1065,11 @@ export class SessionSupervisor {
     record.runningRunId = runId ?? record.runningRunId;
     record.status = isQueuedMessage || isExtensionCommand ? record.status : "running";
     record.updatedAt = nowIso();
-    // A thread given work is not archived. This also undoes an archive that landed while
-    // the caller was still preparing this send, before the driver saw it.
-    if (!isExtensionCommand) record.archivedAt = undefined;
+    // A prompt sent to a thread brings it back from the archive, as the app already does
+    // before a send. This also undoes an agent archive that landed while the caller was
+    // still preparing the send. A queued message starting does not: the user may have
+    // archived the thread while it ran.
+    if (input.revivesArchived && !isExtensionCommand) record.archivedAt = undefined;
     record.config = deriveSessionConfig(session.sessionManager);
     // A card button's command is not something the user said, so it leaves the preview.
     if (!input.extensionCommandOnly) record.preview = truncate(input.text);

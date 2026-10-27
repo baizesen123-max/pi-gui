@@ -267,7 +267,8 @@ export function Sidebar(props: SidebarProps) {
       ancestors.add(entry.parentKey);
       entry = entries.get(entry.parentKey);
     }
-    const path = [target, ...ancestors].join("\n");
+    // A rename of the already selected thread is a new reveal: it needs its row mounted.
+    const path = [renameSessionId ? "rename" : "select", target, ...ancestors].join("\n");
     if (revealedPathRef.current === path) return;
     revealedPathRef.current = path;
     setCollapsedThreads((current) => {

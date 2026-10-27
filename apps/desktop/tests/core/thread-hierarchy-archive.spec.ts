@@ -126,6 +126,14 @@ test("children nest under their parent; the archive tool archives only finished 
     await otherParentRow.getByRole("button", { name: /^Unpin / }).click();
     await expect(otherParentRow).toHaveAttribute("data-session-pinned", "false");
     await expect(group).toHaveCount(0);
+    // Renaming the selected child from the keyboard reopens its collapsed parent.
+    await window.keyboard.press(`${process.platform === "darwin" ? "Meta" : "Control"}+Shift+R`);
+    await expect(window.getByLabel(`Rename thread ${done.title}`)).toBeFocused();
+    await window.keyboard.press("Escape");
+    await expect(group).toBeVisible();
+    await window
+      .getByRole("button", { name: "Collapse children of 主任务 A", exact: true })
+      .click();
     await window.getByRole("button", { name: "Expand children of 主任务 A", exact: true }).click();
     await expect(group).toBeVisible();
     const doneRow = window.locator(`.session-row[data-session-id="${done.sessionId}"]`);

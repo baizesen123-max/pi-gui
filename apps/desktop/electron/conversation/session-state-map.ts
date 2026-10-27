@@ -111,6 +111,7 @@ export class SessionStateMap {
       this.runMetricsBySession,
       this.sessionCommandsBySession,
       this.sessionUsageBySession,
+      this.lastRunOutcomeBySession,
       this.extensionUiBySession,
       this.pendingAutoTitleBySession,
     ];
@@ -174,6 +175,7 @@ export class SessionStateMap {
     this.sessionErrorsBySession.delete(key);
     this.sessionCommandsBySession.delete(key);
     this.sessionUsageBySession.delete(key);
+    this.lastRunOutcomeBySession.delete(key);
     this.extensionUiBySession.delete(key);
     this.pendingAutoTitleBySession.delete(key);
     pendingAutoTitle?.cancel();
