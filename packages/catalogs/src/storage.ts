@@ -23,10 +23,11 @@ export interface CatalogStorage {
     /** Writes the entry; its stoppedReplyId is ignored, the stored one is kept. */
     upsertSession(entry: SessionCatalogEntry): Promise<void>;
     /**
-     * The only writer of stoppedReplyId: sets it, or clears it with undefined. Resolves
-     * false, writing nothing, when the session has no entry yet.
+     * The only writer of stoppedReplyId: sets it, or clears it with undefined. It is kept
+     * apart from the entry, so it holds before the entry exists and through any entry
+     * rewrite; only deleting the session removes it.
      */
-    setStoppedReplyId(sessionRef: SessionRef, replyId: string | undefined): Promise<boolean>;
+    setStoppedReplyId(sessionRef: SessionRef, replyId: string | undefined): Promise<void>;
     deleteSession(sessionRef: SessionRef): Promise<void>;
   };
   worktrees: {
@@ -45,7 +46,7 @@ export interface SessionFileCatalogStorage extends CatalogStorage {
   getSessionFile(sessionRef: SessionRef): Promise<string | undefined>;
   setSessionFile(sessionRef: SessionRef, sessionFile: string): Promise<void>;
   deleteSessionFile(sessionRef: SessionRef): Promise<void>;
-  /** Replaces the workspace's entries, keeping each stored entry's stoppedReplyId. */
+  /** Replaces the workspace's entries; stoppedReplyId marks are not touched. */
   replaceWorkspaceSessions(
     workspaceId: WorkspaceId,
     entries: readonly SessionCatalogEntry[],

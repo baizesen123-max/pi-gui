@@ -523,7 +523,7 @@ await test(
     await h.driver.closeSession(h.ref);
     assert.match(
       await readFile(join(h.root, "catalogs.json"), "utf8"),
-      /"stoppedReplyId": ?"[^"]+"/,
+      /"stoppedReplies": \{\s*"[^"]+": "[^"]+"/,
     );
     const restarted = h.restartedDriver();
     // The app syncs the workspace at startup, which rebuilds every catalog entry.
@@ -537,7 +537,10 @@ await test(
     // Archiving and restoring the cold session rewrites its catalog entry; the mark stays.
     await restarted.archiveSession(h.ref);
     await restarted.unarchiveSession(h.ref);
-    assert.match(await readFile(join(h.root, "catalogs.json"), "utf8"), /"stoppedReplyId"/);
+    assert.match(
+      await readFile(join(h.root, "catalogs.json"), "utf8"),
+      /"stoppedReplies": \{\s*"[^"]+": "[^"]+"/,
+    );
     const reopened = await restarted.openSession(h.ref);
     assert.equal(reopened.lastRunOutcome, "stopped");
     await assert.rejects(
@@ -551,7 +554,7 @@ await test(
     const finished = await restarted.openSession(h.ref);
     assert.equal(finished.status, "idle");
     assert.equal(finished.lastRunOutcome, "completed");
-    assert.doesNotMatch(await readFile(join(h.root, "catalogs.json"), "utf8"), /stoppedReplyId/);
+    assert.match(await readFile(join(h.root, "catalogs.json"), "utf8"), /"stoppedReplies": \{\}/);
   },
 );
 
