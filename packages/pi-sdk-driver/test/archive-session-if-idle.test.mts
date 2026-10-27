@@ -46,14 +46,28 @@ function fixture() {
       getSteeringMessages: () => [],
       getFollowUpMessages: () => [],
       clearQueue: () => undefined,
+      sessionManager: {
+        getBranch: () => [{ type: "message", id: "reply-1", message: { role: "assistant" } }],
+      },
     },
   };
+  // The catalog's stopped-run marks, by session key, as the guarded archive reads them.
+  const marks = new Map<string, string>();
   const supervisor = new SessionSupervisor({
     catalogStorage: {
       sessions: {
         upsertSession: async (value: unknown) => {
           writes.push(value);
         },
+        setStoppedReplyId: async (ref: { workspaceId: string; sessionId: string }, id?: string) => {
+          if (id === undefined) marks.delete(sessionKey(ref));
+          else marks.set(sessionKey(ref), id);
+        },
+        archiveSessionUnlessStopped: async (
+          ref: { workspaceId: string; sessionId: string },
+          _archivedAt: string,
+          newestReplyId: string | undefined,
+        ) => newestReplyId === undefined || marks.get(sessionKey(ref)) !== newestReplyId,
       },
     } as never,
   });
@@ -61,7 +75,7 @@ function fixture() {
     sessionKey(record.ref),
     record,
   );
-  return { supervisor, record, writes, emitted };
+  return { supervisor, record, writes, emitted, marks };
 }
 
 await test("idle archive preserves history and uses the normal archive/restore persistence path", async () => {
@@ -283,69 +297,94 @@ await test("a late edit of a message Stop cleared does not undo the user's archi
   assert.equal(f.record.archivedAt, archivedAt);
 });
 
-function markFixture(setStoppedReplyId: (replyId: string | undefined) => Promise<void>) {
+await test("idle archive refuses a completed reply the catalog marks as stopped", async () => {
   const f = fixture();
-  Object.assign(
-    (f.supervisor as unknown as { catalogs: { sessions: Record<string, unknown> } }).catalogs
-      .sessions,
-    {
-      setStoppedReplyId: (_ref: unknown, replyId: string | undefined) => setStoppedReplyId(replyId),
-    },
+  f.marks.set(sessionKey(f.record.ref), "reply-1");
+  await assert.rejects(
+    f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" }),
+    /last run changed/,
   );
+  assert.equal(f.record.archivedAt, undefined);
+  f.marks.set(sessionKey(f.record.ref), "an-older-reply");
+  await f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" });
+  assert.ok(f.record.archivedAt);
+});
+
+await test("idle archive refuses while a stopped-run mark write has failed (fail-safe)", async () => {
+  const f = fixture();
+  const sessions = (f.supervisor as unknown as { catalogs: { sessions: Record<string, unknown> } })
+    .catalogs.sessions;
+  let fail = true;
+  Object.assign(sessions, {
+    setStoppedReplyId: async () => {
+      if (fail) throw new Error("disk full");
+    },
+  });
   const internals = f.supervisor as unknown as {
     markStoppedReply(record: unknown, replyId: string | undefined): void;
-    persistSnapshot(record: unknown): Promise<void>;
   };
-  return { ...f, internals };
-}
-
-await test("a stopped-run mark whose write failed is written again with the next snapshot", async () => {
-  const stored: (string | undefined)[] = [];
-  let fail = true;
-  const f = markFixture(async (replyId) => {
-    if (fail) throw new Error("disk full");
-    stored.push(replyId);
-  });
-  f.internals.markStoppedReply(f.record, "reply-1");
+  internals.markStoppedReply(f.record, "reply-1");
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(stored, []);
+  await assert.rejects(
+    f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" }),
+    /last run changed/,
+  );
+  // A later write that succeeds lets the catalog decide again.
   fail = false;
-  await f.internals.persistSnapshot(f.record);
-  assert.deepEqual(stored, ["reply-1"]);
-  await f.internals.persistSnapshot(f.record);
-  assert.deepEqual(stored, ["reply-1"], "once stored, it is not written again");
+  internals.markStoppedReply(f.record, undefined);
+  await new Promise((resolve) => setImmediate(resolve));
+  await f.supervisor.archiveSessionIfIdle(f.record.ref, { lastRunOutcome: "completed" });
+  assert.ok(f.record.archivedAt);
 });
 
-await test("a retry writes the session's latest mark, never one a newer mark replaced", async () => {
-  const stored: (string | undefined)[] = [];
-  let fail = true;
-  const f = markFixture(async (replyId) => {
-    if (fail) throw new Error("disk full");
-    stored.push(replyId);
+await test("idle archive waits for a stopped-run mark write in flight, and refuses if it fails", async () => {
+  const f = fixture();
+  const sessions = (f.supervisor as unknown as { catalogs: { sessions: Record<string, unknown> } })
+    .catalogs.sessions;
+  let failWrite!: (error: Error) => void;
+  Object.assign(sessions, {
+    setStoppedReplyId: () =>
+      new Promise<void>((_resolve, reject) => {
+        failWrite = reject;
+      }),
   });
-  f.internals.markStoppedReply(f.record, "reply-1");
-  await new Promise((resolve) => setImmediate(resolve));
-  fail = false;
-  f.internals.markStoppedReply(f.record, "reply-2");
-  await new Promise((resolve) => setImmediate(resolve));
-  await f.internals.persistSnapshot(f.record);
-  assert.deepEqual(stored, ["reply-2"]);
+  (
+    f.supervisor as unknown as { markStoppedReply(record: unknown, replyId: string): void }
+  ).markStoppedReply(f.record, "reply-1");
+  const archiving = f.supervisor.archiveSessionIfIdle(f.record.ref, {
+    lastRunOutcome: "completed",
+  });
+  failWrite(new Error("disk full"));
+  await assert.rejects(archiving, /last run changed/);
+  assert.equal(f.record.archivedAt, undefined);
 });
 
-await test("forgetting a removed session drops its unsaved mark, so no retry writes it back", async () => {
-  const stored: (string | undefined)[] = [];
-  const f = markFixture(async () => {
-    throw new Error("disk full");
+await test("idle archive also waits for a Stop mark write queued while it waited on an earlier one", async () => {
+  const f = fixture();
+  const sessions = (f.supervisor as unknown as { catalogs: { sessions: Record<string, unknown> } })
+    .catalogs.sessions;
+  const pending: { resolve: () => void; reject: (error: Error) => void }[] = [];
+  Object.assign(sessions, {
+    setStoppedReplyId: () =>
+      new Promise<void>((resolve, reject) => {
+        pending.push({ resolve, reject });
+      }),
   });
-  f.internals.markStoppedReply(f.record, "reply-1");
+  const mark = (
+    f.supervisor as unknown as {
+      markStoppedReply(record: unknown, replyId: string | undefined): void;
+    }
+  ).markStoppedReply.bind(f.supervisor);
+  mark(f.record, undefined);
+  const archiving = f.supervisor.archiveSessionIfIdle(f.record.ref, {
+    lastRunOutcome: "completed",
+  });
+  // The guard is now waiting on the first write; a Stop queues a second one.
   await new Promise((resolve) => setImmediate(resolve));
-  const internals = f.internals as typeof f.internals & {
-    forgetStoppedReply(key: string): void;
-    unsavedStoppedReplies: Set<string>;
-    latestStoppedReplies: Map<string, unknown>;
-  };
-  internals.forgetStoppedReply(sessionKey(f.record.ref));
-  assert.equal(internals.unsavedStoppedReplies.size, 0);
-  assert.equal(internals.latestStoppedReplies.size, 0);
-  assert.deepEqual(stored, []);
+  mark(f.record, "reply-1");
+  pending[0]!.resolve();
+  await new Promise((resolve) => setImmediate(resolve));
+  pending[1]!.reject(new Error("disk full"));
+  await assert.rejects(archiving, /last run changed/);
+  assert.equal(f.record.archivedAt, undefined);
 });

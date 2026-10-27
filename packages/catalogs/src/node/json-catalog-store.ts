@@ -199,6 +199,23 @@ export class JsonCatalogStore implements SessionFileCatalogStorage {
         else state.stoppedReplies[key] = replyId;
       });
     },
+    archiveSessionUnlessStopped: async (
+      sessionRef: SessionRef,
+      archivedAt: string,
+      newestReplyId: string | undefined,
+    ): Promise<boolean> => {
+      let archived = false;
+      await this.mutateState((state) => {
+        const key = sessionKey(sessionRef);
+        const entry = state.sessions.find((session) => sessionKey(session.sessionRef) === key);
+        const mark = state.stoppedReplies[key];
+        if (!entry || (newestReplyId !== undefined && mark === newestReplyId)) return false;
+        archived = true;
+        if (entry.archivedAt === archivedAt) return false;
+        entry.archivedAt = archivedAt;
+      });
+      return archived;
+    },
     deleteSession: async (sessionRef: SessionRef): Promise<void> => {
       await this.mutateState((state) => {
         const key = sessionKey(sessionRef);

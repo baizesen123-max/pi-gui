@@ -111,8 +111,8 @@ import {
   transcriptItemFromPinEntry,
   customMessageTranscriptItem,
   isHiddenCustomMessage,
+  lastRunOutcome,
   newestReplyEntryId,
-  sessionRunOutcome,
   truncate,
   workspaceToRef,
   type RunOutcome,
@@ -195,12 +195,6 @@ export interface PiSdkDriverOptions {
 export interface SyncWorkspaceResult {
   readonly workspace: WorkspaceRef;
   readonly sessions: SessionCatalogSnapshot["sessions"];
-}
-
-/** A stopped-run mark for the session it belongs to (see markStoppedReply). */
-interface StoppedReplyMark {
-  readonly ref: SessionRef;
-  readonly replyId: string | undefined;
 }
 
 /** A send as the supervisor runs it; only a direct send revives an archived thread. */
@@ -317,10 +311,13 @@ interface SkillAdapter {
 }
 
 export class SessionSupervisor {
-  /** The latest stopped-run mark this process saw for each session, by session key. */
-  private readonly latestStoppedReplies = new Map<string, StoppedReplyMark>();
-  /** Session keys whose latest mark is not yet in the catalog. */
-  private readonly unsavedStoppedReplies = new Set<string>();
+  /**
+   * Sessions whose last stopped-run mark write failed: the catalog may be missing a Stop,
+   * so the guarded archive refuses them until a later write for the session succeeds.
+   */
+  private readonly failedStopMarkWrites = new Set<string>();
+  /** Each session's latest stopped-run mark write still in flight; the archive waits on it. */
+  private readonly stopMarkWrites = new Map<string, Promise<void>>();
   private readonly catalogs: SessionFileCatalogStorage;
   private readonly createAgentSessionRuntimeImpl: (
     options?: PiCreateAgentSessionOptions,
@@ -551,8 +548,6 @@ export class SessionSupervisor {
       mergedEntries,
       nextSessionFiles,
     );
-    // Retry marks that failed to save; the catalog keeps them apart from what the sync wrote.
-    for (const key of [...this.unsavedStoppedReplies]) await this.saveStoppedReply(key);
     for (const session of existingSessions) {
       const key = sessionKey(session.sessionRef);
       if (discoveredKeys.has(key) || preservedKeys.has(key)) {
@@ -560,7 +555,6 @@ export class SessionSupervisor {
       }
 
       await this.catalogs.sessions.deleteSession(session.sessionRef);
-      this.forgetStoppedReply(key);
       const record = this.records.get(key);
       if (!record) {
         continue;
@@ -626,9 +620,6 @@ export class SessionSupervisor {
     await this.runWorkspaceMutation(workspaceId, async () => {
       const sessions = (await this.catalogs.sessions.listSessions(workspaceId)).sessions;
       await this.catalogs.workspaces.deleteWorkspace(workspaceId);
-      for (const key of [...this.latestStoppedReplies.keys()]) {
-        if (key.startsWith(`${workspaceId}:`)) this.forgetStoppedReply(key);
-      }
 
       for (const session of sessions) {
         const key = sessionKey(session.sessionRef);
@@ -998,6 +989,9 @@ export class SessionSupervisor {
     expect: { readonly lastRunOutcome?: SessionRunOutcome } = {},
   ): Promise<void> {
     const record = await this.ensureRecord(sessionRef);
+    // Every Stop mark write on its way, including one queued while waiting, must land (or
+    // fail) before the checks below; nothing awaits between the last one and the checks.
+    for (let write; (write = this.stopMarkWrites.get(sessionKey(record.ref)));) await write;
     const session = this.requireSession(record);
     if (
       isRecordBusy(record) ||
@@ -1014,17 +1008,37 @@ export class SessionSupervisor {
         "The thread is running, waiting, or has queued messages; it was not archived.",
       );
     }
-    // The caller judged the work from facts it saw earlier; refuse if they changed since.
+    const changed = new Error(
+      "The thread's last run changed since it was checked; it was not archived.",
+    );
+    // The caller judged the work from facts it saw earlier; refuse if they changed since, or
+    // if a Stop may be missing from the catalog because saving it failed.
     if (
-      expect.lastRunOutcome !== undefined &&
-      sessionRunOutcome({ session, stoppedReplyId: record.stoppedReplyId }) !==
-        expect.lastRunOutcome
+      (expect.lastRunOutcome !== undefined &&
+        lastRunOutcome(session.messages) !== expect.lastRunOutcome) ||
+      this.failedStopMarkWrites.has(sessionKey(record.ref))
     ) {
-      throw new Error("The thread's last run changed since it was checked; it was not archived.");
+      throw changed;
     }
-    // updateArchivedState sets the loaded record synchronously before its first
-    // await, so a new prompt cannot slip between the busy check and the mutation.
-    await this.updateArchivedState(sessionRef, nowIso());
+    // Set before the first await, so a new prompt cannot slip between the busy check and the
+    // write (a send in the meantime revives the thread). The catalog reads the stopped-run
+    // mark and writes archivedAt in one serialized step: a completed reply a Stop marked is
+    // refused, and no other copy of the mark decides.
+    const archivedAt = nowIso();
+    record.archivedAt = archivedAt;
+    const archived = await this.catalogs.sessions
+      .archiveSessionUnlessStopped(
+        record.ref,
+        archivedAt,
+        expect.lastRunOutcome === "completed"
+          ? newestReplyEntryId(session.sessionManager.getBranch())
+          : undefined,
+      )
+      .catch(() => false);
+    if (!archived && record.archivedAt === archivedAt) record.archivedAt = undefined;
+    await this.persistSnapshot(record);
+    if (!archived) throw changed;
+    await this.emit(record, sessionUpdatedEvent(record));
   }
 
   async unarchiveSession(sessionRef: SessionRef): Promise<void> {
@@ -1681,9 +1695,6 @@ export class SessionSupervisor {
     }
 
     await this.persistSnapshot(record);
-    // Saved and closed: the catalog is the session's mark again for whoever opens it next.
-    const key = sessionKey(record.ref);
-    if (!this.unsavedStoppedReplies.has(key)) this.latestStoppedReplies.delete(key);
     await this.emit(record, {
       type: "sessionClosed",
       sessionRef: record.ref,
@@ -1764,7 +1775,7 @@ export class SessionSupervisor {
     record.status = sessionEntry.status;
     record.updatedAt = sessionEntry.updatedAt;
     record.archivedAt = sessionEntry.archivedAt;
-    record.stoppedReplyId = this.currentStoppedReply(key, sessionEntry.stoppedReplyId);
+    record.stoppedReplyId = sessionEntry.stoppedReplyId;
     record.preview = sessionEntry.previewSnippet ?? undefined;
     record.config = deriveSessionConfig(session.sessionManager);
     record.closed = false;
@@ -2016,16 +2027,8 @@ export class SessionSupervisor {
     if (previousKey !== nextKey) {
       const existingTarget = this.records.get(nextKey);
       // The stopped-reply mark belongs to the session being switched to, not the one left.
-      const targetStoppedReplyId =
-        existingTarget &&
-        existingTarget !== record &&
-        existingTarget.session &&
-        !existingTarget.closed
-          ? existingTarget.stoppedReplyId
-          : this.currentStoppedReply(
-              nextKey,
-              (await this.catalogs.sessions.getSession(nextRef))?.stoppedReplyId,
-            );
+      const targetStoppedReplyId = (await this.catalogs.sessions.getSession(nextRef))
+        ?.stoppedReplyId;
       if (existingTarget && existingTarget !== record) {
         for (const listener of existingTarget.listeners) {
           record.listeners.add(listener);
@@ -2036,9 +2039,6 @@ export class SessionSupervisor {
         await this.disposeRecordRuntime(existingTarget);
       }
       this.records.delete(previousKey);
-      // The session left is no longer held here; once its mark is saved, the catalog decides.
-      if (!this.unsavedStoppedReplies.has(previousKey))
-        this.latestStoppedReplies.delete(previousKey);
       record.ref = nextRef;
       record.stoppedReplyId = targetStoppedReplyId;
       this.records.set(nextKey, record);
@@ -2690,46 +2690,29 @@ export class SessionSupervisor {
   }
 
   /**
-   * Records which reply a stopped run left newest, and saves it for the session the run
-   * belonged to now: a queued snapshot write could land after a session switch re-keys the
-   * record, so the mark is written on its own, for this ref, in event order.
+   * Saves which reply a stopped run left newest, straight to the catalog for the session the
+   * run belonged to: a queued snapshot write could land after a session switch re-keys the
+   * record. The record keeps a copy for snapshots only; the guarded archive reads the catalog.
    */
   private markStoppedReply(record: ManagedSessionRecord, replyId: string | undefined): void {
-    if (record.stoppedReplyId === replyId) return;
     record.stoppedReplyId = replyId;
-    const key = sessionKey(record.ref);
-    this.latestStoppedReplies.set(key, { ref: { ...record.ref }, replyId });
-    this.unsavedStoppedReplies.add(key);
-    this.saveStoppedReply(key).catch(() => undefined);
-  }
-
-  /**
-   * Writes a session's latest mark. One that failed stays unsaved and is written again with
-   * that session's next snapshot or the next workspace sync.
-   */
-  private async saveStoppedReply(key: string): Promise<void> {
-    const mark = this.latestStoppedReplies.get(key);
-    if (!mark || !this.unsavedStoppedReplies.has(key)) return;
-    try {
-      await this.catalogs.sessions.setStoppedReplyId(mark.ref, mark.replyId);
-      if (this.latestStoppedReplies.get(key) === mark) this.unsavedStoppedReplies.delete(key);
-    } catch (error) {
-      console.warn(`[pi-sdk-driver] saving the stopped run for ${key} failed:`, error);
-    }
-  }
-
-  private forgetStoppedReply(key: string): void {
-    this.latestStoppedReplies.delete(key);
-    this.unsavedStoppedReplies.delete(key);
-  }
-
-  /**
-   * A session's mark: the latest this process saw while it held the session wins over a
-   * catalog read that can lag behind a write still in flight.
-   */
-  private currentStoppedReply(key: string, stored: string | undefined): string | undefined {
-    const latest = this.latestStoppedReplies.get(key);
-    return latest ? latest.replyId : stored;
+    const ref = { ...record.ref };
+    const key = sessionKey(ref);
+    const settled = () => {
+      if (this.stopMarkWrites.get(key) === write) this.stopMarkWrites.delete(key);
+    };
+    const write: Promise<void> = this.catalogs.sessions.setStoppedReplyId(ref, replyId).then(
+      () => {
+        this.failedStopMarkWrites.delete(key);
+        settled();
+      },
+      (error: unknown) => {
+        this.failedStopMarkWrites.add(key);
+        settled();
+        console.warn(`[pi-sdk-driver] saving the stopped run for ${key} failed:`, error);
+      },
+    );
+    this.stopMarkWrites.set(key, write);
   }
 
   private handleAgentEvent(record: ManagedSessionRecord, event: AgentSessionEvent): void {
@@ -2918,10 +2901,13 @@ export class SessionSupervisor {
           ? { status: "cancelled" as const }
           : record.pendingRunOutcome;
         record.pendingRunOutcome = undefined;
+        // pi captures `aborted` before awaiting extension agent_settled handlers, so a Stop
+        // the driver accepted during them counts too.
+        const stopped = event.aborted || record.cancellationRequested;
         record.cancellationRequested = false;
         this.markStoppedReply(
           record,
-          event.aborted && record.session
+          stopped && record.session
             ? newestReplyEntryId(record.session.sessionManager.getBranch())
             : undefined,
         );
@@ -3079,7 +3065,6 @@ export class SessionSupervisor {
     if (record.sessionFile) {
       await this.catalogs.setSessionFile(record.ref, record.sessionFile);
     }
-    await this.saveStoppedReply(sessionKey(snapshot.ref));
   }
 
   private collectSessionCommands(session: AgentSession): RuntimeCommandRecord[] {

@@ -28,6 +28,16 @@ export interface CatalogStorage {
      * rewrite; only deleting the session removes it.
      */
     setStoppedReplyId(sessionRef: SessionRef, replyId: string | undefined): Promise<void>;
+    /**
+     * Sets archivedAt in one serialized step with reading the session's stopped-run mark, and
+     * refuses (resolves false, writing nothing) when the mark is on `newestReplyId`, the
+     * reply the caller is about to count as completed, or when the session has no entry.
+     */
+    archiveSessionUnlessStopped(
+      sessionRef: SessionRef,
+      archivedAt: string,
+      newestReplyId: string | undefined,
+    ): Promise<boolean>;
     deleteSession(sessionRef: SessionRef): Promise<void>;
   };
   worktrees: {

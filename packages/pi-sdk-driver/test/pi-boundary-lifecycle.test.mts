@@ -618,3 +618,41 @@ await test(
     await assert.rejects(restarted.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }));
   },
 );
+
+await test(
+  "after switching away, a Stop another owner saved for the session refuses the archive on return",
+  { timeout: 15000 },
+  async (t) => {
+    const h = await fixture(
+      t,
+      (model) => response(model, "Review done"),
+      (pi) => {
+        pi.registerCommand("fresh-thread", {
+          description: "Start a new session from an extension",
+          handler: async (_args, ctx) => {
+            await ctx.newSession();
+          },
+        });
+      },
+    );
+    await h.driver.sendUserMessage(h.ref, { text: "Review the PR" });
+    await h.until(() => h.completions().length > 0);
+    const reply = h.runtime.session.sessionManager
+      .getBranch()
+      .filter((entry) => entry.type === "message" && entry.message.role === "assistant")
+      .at(-1);
+    assert.ok(reply);
+    // An extension moves the thread to a new session; this process no longer holds the first.
+    await h.driver.sendUserMessage(h.ref, { text: "/fresh-thread" });
+    // Another owner opens the first session, stops a run whose newest reply is that one, saves.
+    const otherOwner = new JsonCatalogStore({ catalogFilePath: join(h.root, "catalogs.json") });
+    await otherOwner.sessions.setStoppedReplyId(h.ref, reply.id);
+    // Back to the first session here: the archive must read the catalog, not a stale copy.
+    await h.driver.openSession(h.ref);
+    await assert.rejects(
+      h.driver.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }),
+      /last run changed/,
+    );
+    assert.equal((await h.driver.openSession(h.ref)).archivedAt, undefined);
+  },
+);
