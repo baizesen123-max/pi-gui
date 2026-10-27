@@ -21,6 +21,7 @@ import type {
   SessionTranscriptCustomMessage,
   SessionTranscriptItem,
   SessionTranscriptPin,
+  SessionRunOutcome,
   SessionUsageSnapshot,
   WorkspaceRef,
 } from "@pi-gui/session-driver";
@@ -46,9 +47,30 @@ export interface SnapshotSource {
   readonly runningRunId: string | undefined;
   readonly queuedMessages: readonly SessionQueuedMessage[];
   readonly usage?: SessionUsageSnapshot | undefined;
+  readonly session?: { readonly messages: readonly unknown[] } | undefined;
+}
+
+/** The newest assistant message's stop reason, as a fact; callers decide what it means. */
+export function lastRunOutcome(messages: readonly unknown[]): SessionRunOutcome | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i];
+    if (!isRecord(message) || message.role !== "assistant") continue;
+    switch (message.stopReason) {
+      case "stop":
+        return "completed";
+      case "aborted":
+        return "stopped";
+      case "error":
+        return "failed";
+      default:
+        return "incomplete";
+    }
+  }
+  return undefined;
 }
 
 export function buildSnapshot(source: SnapshotSource): SessionSnapshot {
+  const outcome = source.session ? lastRunOutcome(source.session.messages) : undefined;
   return {
     ref: { ...source.ref },
     workspace: { ...source.workspace },
@@ -60,6 +82,7 @@ export function buildSnapshot(source: SnapshotSource): SessionSnapshot {
     ...(source.config ? { config: source.config } : {}),
     ...(source.runningRunId !== undefined ? { runningRunId: source.runningRunId } : {}),
     ...(source.usage ? { usage: source.usage } : {}),
+    ...(outcome ? { lastRunOutcome: outcome } : {}),
     ...(source.queuedMessages.length > 0
       ? {
           queuedMessages: source.queuedMessages.map((message) => ({

@@ -8,6 +8,7 @@ import type {
   SessionConfig,
   SessionDriverEvent,
   SessionRef,
+  SessionRunOutcome,
   SessionSnapshot,
   WorkspaceRef,
 } from "@pi-gui/session-driver";
@@ -89,6 +90,8 @@ interface OrchestrationOwnerHost {
     | { archivedAt?: string; updatedAt: string; title: string; status: string; preview?: string }
     | undefined;
   ensureSessionReady(sessionRef: SessionRef): Promise<SessionSnapshot | undefined>;
+  /** The driver's report of how the session's newest assistant reply ended. */
+  lastRunOutcome(sessionRef: SessionRef): SessionRunOutcome | undefined;
   /** Archives only if the driver confirms nothing is in flight; throws otherwise. */
   archiveIdleSession(sessionRef: SessionRef): Promise<void>;
   ensureSessionSubscription(sessionRef: SessionRef): Promise<void>;
@@ -701,7 +704,10 @@ async function archiveFinishedChild(
   await store.archiveIdleSession(ref);
 }
 
-/** Finished means idle with an empty queue, and the last turn ended with an assistant reply. */
+/**
+ * Finished means idle with an empty queue, the newest reply completed normally (not
+ * stopped, failed, or cut off), and no user message came after it.
+ */
 function unfinishedChildReason(store: OrchestrationOwnerHost, ref: SessionRef): string | undefined {
   const session = store.sessionFromState(ref);
   const status = session ? toOrchestrationStatus(session.status, ref, store) : "failed";
@@ -709,6 +715,9 @@ function unfinishedChildReason(store: OrchestrationOwnerHost, ref: SessionRef): 
     return "Child thread is running or has queued messages";
   if (status === "queued") return "Child thread has not started its work";
   if (status === "failed") return "Child thread's last run failed";
+  const outcome = store.lastRunOutcome(ref);
+  if (outcome === "stopped") return "Child thread's last run was stopped before it finished";
+  if (outcome !== "completed") return "Child thread's last run did not complete";
   const transcript = store.transcriptFor(ref);
   for (let index = transcript.length - 1; index >= 0; index--) {
     const item = transcript[index]!;

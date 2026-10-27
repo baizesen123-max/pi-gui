@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
+  buildSnapshot,
   determineRunOutcome,
+  lastRunOutcome,
   messageText,
   persistedToolOutput,
   shouldPersistSnapshotForAgentEvent,
@@ -142,4 +144,43 @@ await test("transcriptFromMessages shows displayed custom messages the way termi
       text: "as a string",
     },
   ]);
+});
+
+await test("lastRunOutcome reports how the newest assistant reply ended", () => {
+  const reply = (stopReason: string) => [
+    { role: "user", content: "go" },
+    { role: "assistant", stopReason, content: "partial" },
+  ];
+  assert.equal(lastRunOutcome([]), undefined);
+  assert.equal(lastRunOutcome([{ role: "user", content: "go" }]), undefined);
+  assert.equal(lastRunOutcome(reply("stop")), "completed");
+  assert.equal(lastRunOutcome(reply("aborted")), "stopped");
+  assert.equal(lastRunOutcome(reply("error")), "failed");
+  assert.equal(lastRunOutcome(reply("length")), "incomplete");
+  assert.equal(lastRunOutcome(reply("toolUse")), "incomplete");
+  assert.equal(lastRunOutcome([...reply("aborted"), { role: "toolResult" }]), "stopped");
+});
+
+await test("a session stopped after partial text snapshots as stopped, not completed", () => {
+  const source = {
+    ref: { workspaceId: "workspace", sessionId: "session" },
+    workspace: { workspaceId: "workspace", path: "/synthetic/workspace" },
+    title: "Stopped turn",
+    status: "idle" as const,
+    updatedAt: new Date().toISOString(),
+    archivedAt: undefined,
+    preview: undefined,
+    config: undefined,
+    runningRunId: undefined,
+    queuedMessages: [],
+  };
+  const stopped = [
+    { role: "user", content: "write the report" },
+    { role: "assistant", stopReason: "aborted", content: "Here is the first half of" },
+  ];
+  assert.equal(
+    buildSnapshot({ ...source, session: { messages: stopped } }).lastRunOutcome,
+    "stopped",
+  );
+  assert.equal(buildSnapshot(source).lastRunOutcome, undefined);
 });

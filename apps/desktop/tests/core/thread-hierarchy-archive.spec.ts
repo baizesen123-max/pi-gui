@@ -27,6 +27,7 @@ test("children nest under their parent; the archive tool archives only finished 
     "已完成的子任务",
     "中断的子任务",
     "其他主任务的子任务",
+    "被停止的子任务",
   ]) {
     fixtures.push(
       await seedNamedTextSessionFixture(agentDir, workspacePath, {
@@ -36,46 +37,56 @@ test("children nest under their parent; the archive tool archives only finished 
       }),
     );
   }
-  const [parent, otherParent, done, incomplete, foreign] = fixtures;
-  if (!parent || !otherParent || !done || !incomplete || !foreign)
+  const [parent, otherParent, done, incomplete, foreign, stopped] = fixtures;
+  if (!parent || !otherParent || !done || !incomplete || !foreign || !stopped)
     throw new Error("Missing fixtures");
-  // The interrupted child got a follow-up after its reply and never answered it.
+  // Give each reply the stop reason a real provider writes. The stopped child's reply
+  // was cut off by a user stop; the interrupted child got a follow-up it never answered.
   const sessionFiles = await readdir(join(agentDir, "sessions"), { recursive: true });
-  const name = sessionFiles.find(
-    (file) => file.endsWith(".jsonl") && file.includes(incomplete.sessionId),
-  );
-  if (!name) throw new Error("Fixture file not found");
-  const path = join(agentDir, "sessions", name);
-  const lines = (await readFile(path, "utf8")).trim().split("\n");
-  const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
-  const userEntry = entries.find(
-    (entry) => (entry.message as { role?: string } | undefined)?.role === "user",
-  );
-  if (!userEntry) throw new Error("Fixture user message not found");
-  const followUp = {
-    ...userEntry,
-    id: "unanswered-follow-up",
-    parentId: entries.at(-1)?.id,
-    timestamp: new Date().toISOString(),
-    message: { role: "user", content: "继续完成剩下的工作", timestamp: Date.now() },
-  };
-  await writeFile(path, [...lines, JSON.stringify(followUp)].join("\n") + "\n");
+  for (const fixture of fixtures) {
+    const name = sessionFiles.find(
+      (file) => file.endsWith(".jsonl") && file.includes(fixture.sessionId),
+    );
+    if (!name) throw new Error("Fixture file not found");
+    const path = join(agentDir, "sessions", name);
+    const entries = (await readFile(path, "utf8"))
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { id?: string; message?: Record<string, unknown> });
+    for (const entry of entries)
+      if (entry.message?.role === "assistant")
+        entry.message.stopReason = fixture === stopped ? "aborted" : "stop";
+    if (fixture === incomplete) {
+      const userEntry = entries.find((entry) => entry.message?.role === "user");
+      if (!userEntry) throw new Error("Fixture user message not found");
+      entries.push({
+        ...userEntry,
+        id: "unanswered-follow-up",
+        parentId: entries.at(-1)?.id,
+        timestamp: new Date().toISOString(),
+        message: { role: "user", content: "继续完成剩下的工作", timestamp: Date.now() },
+      } as (typeof entries)[number]);
+    }
+    await writeFile(path, entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n");
+  }
   const now = new Date().toISOString();
-  const children: OrchestrationChildThread[] = [done, incomplete, foreign].map((child, index) => ({
-    id: `child-${index}`,
-    parentWorkspaceId: workspacePath,
-    parentSessionId: index === 2 ? otherParent.sessionId : parent.sessionId,
-    childWorkspaceId: workspacePath,
-    childSessionId: child.sessionId,
-    title: child.title,
-    goal: "隔离测试",
-    status: "complete",
-    latestTranscript: "fixture",
-    transcript: [],
-    evidence: [],
-    createdAt: now,
-    updatedAt: now,
-  }));
+  const children: OrchestrationChildThread[] = [done, incomplete, foreign, stopped].map(
+    (child, index) => ({
+      id: `child-${index}`,
+      parentWorkspaceId: workspacePath,
+      parentSessionId: index === 2 ? otherParent.sessionId : parent.sessionId,
+      childWorkspaceId: workspacePath,
+      childSessionId: child.sessionId,
+      title: child.title,
+      goal: "隔离测试",
+      status: "complete",
+      latestTranscript: "fixture",
+      transcript: [],
+      evidence: [],
+      createdAt: now,
+      updatedAt: now,
+    }),
+  );
   await writeFile(
     join(userDataDir, "ui-state.json"),
     JSON.stringify({
@@ -96,7 +107,7 @@ test("children nest under their parent; the archive tool archives only finished 
   try {
     let window = await harness.firstWindow();
     const group = window.getByRole("group", { name: "Children of 主任务 A", exact: true });
-    await expect(group.locator(".session-row")).toHaveCount(2);
+    await expect(group.locator(".session-row")).toHaveCount(3);
     await expect(group).toContainText(done.title);
     await expect(group).not.toContainText(foreign.title);
     await window
@@ -111,7 +122,7 @@ test("children nest under their parent; the archive tool archives only finished 
     await expect(
       window.locator(`.session-list--pinned .session-row[data-session-id="${done.sessionId}"]`),
     ).toBeVisible();
-    await expect(group.locator(".session-row")).toHaveCount(1);
+    await expect(group.locator(".session-row")).toHaveCount(2);
     await doneRow.hover();
     await doneRow.getByRole("button", { name: new RegExp(`^Unpin ${done.title}`) }).click();
     await expect(group.locator(`.session-row[data-session-id="${done.sessionId}"]`)).toBeVisible();
@@ -127,7 +138,7 @@ test("children nest under their parent; the archive tool archives only finished 
     const result = await runOrchestrationRuntimeTool(harness, {
       sessionRef: parentRef,
       toolName: "archive_child_threads",
-      params: { thread_ids: ["child-0", "child-1", "child-2", parent.sessionId] },
+      params: { thread_ids: ["child-0", "child-1", "child-2", "child-3", parent.sessionId] },
     });
     await info.attach("archive-result", {
       body: JSON.stringify(result.details),
@@ -141,9 +152,13 @@ test("children nest under their parent; the archive tool archives only finished 
         reason: "Child thread's last turn did not end with a reply; it was not archived.",
       },
       { threadId: "child-2", reason: notOwn },
+      {
+        threadId: "child-3",
+        reason: "Child thread's last run was stopped before it finished; it was not archived.",
+      },
       { threadId: parent.sessionId, reason: notOwn },
     ]);
-    await expect(group.locator(".session-row")).toHaveCount(1);
+    await expect(group.locator(".session-row")).toHaveCount(2);
     await expect(window.getByTestId("composer")).toHaveValue(parentDraft);
     const listed = await runOrchestrationRuntimeTool(harness, {
       sessionRef: parentRef,
@@ -158,7 +173,7 @@ test("children nest under their parent; the archive tool archives only finished 
     });
     expect(repeat.details?.archived).toEqual([]);
     const before = await getDesktopState(window);
-    expect(before.orchestrationChildren).toHaveLength(3);
+    expect(before.orchestrationChildren).toHaveLength(4);
     expect(
       before.workspaces
         .flatMap((ws) => ws.sessions)
@@ -180,11 +195,11 @@ test("children nest under their parent; the archive tool archives only finished 
       window
         .getByRole("group", { name: "Children of 主任务 A", exact: true })
         .locator(".session-row"),
-    ).toHaveCount(2);
+    ).toHaveCount(3);
     await selectSession(window, done.title);
     await expect(window.getByTestId("composer")).toHaveValue(childDraft);
     expect(await getSelectedTranscript(window)).toEqual(history);
-    expect((await getDesktopState(window)).orchestrationChildren).toHaveLength(3);
+    expect((await getDesktopState(window)).orchestrationChildren).toHaveLength(4);
   } finally {
     await harness.close();
   }
