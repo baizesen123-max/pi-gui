@@ -1,15 +1,36 @@
-export const THREAD_MESSAGE_PREFIX = "[pi-gui thread message ";
+/** Where a message that another project's thread sent came from. */
+export interface CrossProjectMessageOrigin {
+  /** Display name of the sending project. */
+  readonly project: string;
+  /** Thread id the receiver can pass to send_message_to_thread to answer. */
+  readonly threadId: string;
+}
 
-/** Compact display only. The persisted prompt retains provenance and routing constraints. */
-export function threadMessageDisplayText(text: string): string {
-  if (!text.startsWith(THREAD_MESSAGE_PREFIX)) return text;
-  const separator = text.indexOf("\n\n");
-  if (separator < 0) return text;
-  const header = text.slice(0, separator);
-  const project = header
-    .split("\n")
-    .find((line) => line.startsWith("From project: "))
-    ?.slice("From project: ".length);
-  const name = project?.split(/[\\/]/).filter(Boolean).pop();
-  return `${name ? `Message from project "${name}"` : "Message from another thread"}\n\n${text.slice(separator + 2)}`;
+export interface CrossProjectMessage extends CrossProjectMessageOrigin {
+  readonly body: string;
+}
+
+// The origin travels inside the prompt text: the receiving model sees where the work came
+// from, and the timeline can label it again after a restart, when only the text survives.
+// Same-project messages never carry it.
+const HEADER =
+  /^\[Message from project ("(?:[^"\\\n]|\\.)*") in thread ("(?:[^"\\\n]|\\.)*")\]\n\n/;
+
+export function formatCrossProjectMessage(origin: CrossProjectMessageOrigin, body: string): string {
+  return `[Message from project ${JSON.stringify(origin.project)} in thread ${JSON.stringify(origin.threadId)}]\n\n${body}`;
+}
+
+/** Reads the origin header of a user message; null when the message has none. */
+export function parseCrossProjectMessage(text: string): CrossProjectMessage | null {
+  const match = HEADER.exec(text);
+  if (!match) return null;
+  try {
+    return {
+      project: JSON.parse(match[1]!) as string,
+      threadId: JSON.parse(match[2]!) as string,
+      body: text.slice(match[0].length),
+    };
+  } catch {
+    return null;
+  }
 }

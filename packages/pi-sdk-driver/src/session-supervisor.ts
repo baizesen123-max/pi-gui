@@ -1268,44 +1268,6 @@ export class SessionSupervisor {
     }
   }
 
-  /** Add/remove one queued message inside the same lock used by pi queue consumption. */
-  async enqueueMessage(ref: SessionRef, message: SessionQueuedMessage): Promise<void> {
-    const record = await this.ensureRecord(ref);
-    this.requireSession(record);
-    await this.changeQueue(record, (session) => {
-      forgetDeliveredQueuedMessages(record, session);
-      if (
-        record.startedQueuedMessageIds.has(message.id) ||
-        record.queuedMessages.some((m) => m.id === message.id)
-      )
-        return false;
-      record.queuedMessages.push(cloneQueuedMessage(message));
-      record.queuedStartFailed = false;
-    });
-    record.updatedAt = nowIso();
-    await this.persistSnapshot(record);
-    await this.emit(record, sessionUpdatedEvent(record));
-    this.startQueuedMessageWhenIdle(record);
-  }
-
-  async cancelQueuedMessage(ref: SessionRef, messageId: string): Promise<boolean> {
-    const record = await this.ensureRecord(ref);
-    let removed = false;
-    await this.changeQueue(record, (session) => {
-      forgetDeliveredQueuedMessages(record, session);
-      const pending = record.queuedMessages.find((m) => m.id === messageId);
-      if (!pending || record.startedQueuedMessageIds.has(messageId)) return false;
-      record.queuedMessages = record.queuedMessages.filter((m) => m.id !== messageId);
-      removed = true;
-    });
-    if (removed) {
-      record.updatedAt = nowIso();
-      await this.persistSnapshot(record);
-      await this.emit(record, sessionUpdatedEvent(record));
-    }
-    return removed;
-  }
-
   async replaceQueuedMessages(
     sessionRef: SessionRef,
     messages: readonly SessionQueuedMessage[],

@@ -50,7 +50,10 @@ export interface OrchestrationThreadListEntry {
   readonly sessionId: string;
   readonly title: string;
   readonly status: string;
-  readonly relationship: "current" | "child" | "workspace";
+  /** `workspace` threads share the caller's project; `other_project` threads live in another one. */
+  readonly relationship: "current" | "child" | "workspace" | "other_project";
+  /** Display name of the thread's project, set only for `other_project` threads. */
+  readonly project?: string;
   readonly updatedAt: string;
   readonly preview: string;
   readonly childThreadId?: string;
@@ -68,6 +71,8 @@ export interface OrchestrationThreadTranscriptMessage {
 
 export interface ListThreadsToolDetails {
   readonly action: typeof listThreadsAction;
+  /** The `workspace` argument, when the call named another project or `*`. */
+  readonly workspace?: string;
   readonly threads?: readonly OrchestrationThreadListEntry[];
   readonly error?: string;
 }
@@ -93,6 +98,8 @@ export interface SendMessageToThreadToolDetails {
   readonly sessionId?: string;
   readonly status?: "queued" | "sent";
   readonly queuedMessageCount?: number;
+  /** Display name of the receiving project, set only when it is not the sender's project. */
+  readonly project?: string;
   readonly error?: string;
 }
 
@@ -105,7 +112,10 @@ export interface OrchestrationRuntimeBridge {
     ctx: ExtensionContext,
     input: { readonly prompt: string; readonly toolCallId: string },
   ) => Promise<AgentToolResult<CreateChildThreadToolDetails>>;
-  readonly listThreads: (ctx: ExtensionContext) => Promise<AgentToolResult<ListThreadsToolDetails>>;
+  readonly listThreads: (
+    ctx: ExtensionContext,
+    input: { readonly workspace?: string },
+  ) => Promise<AgentToolResult<ListThreadsToolDetails>>;
   readonly readThread: (
     ctx: ExtensionContext,
     threadId: string,
@@ -162,19 +172,28 @@ function createListThreadsTool(
   return {
     name: listThreadsToolName,
     label: "List threads",
-    description: "List pi-gui threads visible to the current workspace and parent thread.",
+    description:
+      "List pi-gui threads in the current project and parent thread, or in another project.",
     promptSnippet:
-      "list_threads: list relevant pi-gui threads for the current workspace and parent context.",
+      "list_threads: list pi-gui threads for the current project, another project, or every project.",
     promptGuidelines: [
       "Use list_threads before reading or messaging another pi-gui thread when you need the exact thread id.",
+      'Pass workspace with a project name, path or id to list that project\'s threads, or "*" for every project.',
       "Use the returned thread id with read_thread or send_message_to_thread.",
     ],
     parameters: {
       type: "object",
-      properties: {},
+      properties: {
+        workspace: {
+          type: "string",
+          description:
+            'Optional project name, path or id to list instead of the current project, or "*" for every project.',
+        },
+      },
     },
-    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
-      return bridge.listThreads(ctx);
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const workspace = isRecord(params) ? stringParam(params, "workspace") : undefined;
+      return bridge.listThreads(ctx, workspace ? { workspace } : {});
     },
   };
 }
@@ -224,10 +243,11 @@ function createSendMessageToThreadTool(
   return {
     name: sendMessageToThreadToolName,
     label: "Send message to thread",
-    description: "Send a follow-up message to an existing pi-gui thread.",
+    description:
+      "Send a follow-up message to an existing pi-gui thread in this project or another project.",
     promptSnippet: "send_message_to_thread: send a follow-up to an existing pi-gui thread.",
     promptGuidelines: [
-      "Use send_message_to_thread to follow up with an existing child or sibling pi-gui thread.",
+      "Use send_message_to_thread to follow up with an existing child, sibling, or other-project pi-gui thread.",
       "Use a thread id returned by list_threads or create_child_thread.",
     ],
     parameters: {

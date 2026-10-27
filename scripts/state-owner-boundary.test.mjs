@@ -33,7 +33,6 @@ const durableStateOwners = [
       "apps/desktop/electron/scheduled-tasks/scheduled-task-store.ts",
       reviewedStore,
       checkpointStore,
-      "apps/desktop/electron/orchestration/thread-message-store.ts",
     ],
   },
 ];

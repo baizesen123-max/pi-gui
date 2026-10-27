@@ -90,14 +90,6 @@ export class PiSdkDriver implements SessionDriver {
     return this.supervisor.sendUserMessage(sessionRef, input);
   }
 
-  enqueueMessage(ref: SessionRef, message: SessionQueuedMessage): Promise<void> {
-    return this.supervisor.enqueueMessage(ref, message);
-  }
-
-  cancelQueuedMessage(ref: SessionRef, messageId: string): Promise<boolean> {
-    return this.supervisor.cancelQueuedMessage(ref, messageId);
-  }
-
   replaceQueuedMessages(
     sessionRef: SessionRef,
     messages: readonly SessionQueuedMessage[],

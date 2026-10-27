@@ -1,12 +1,14 @@
-import { threadMessageDisplayText } from "../../../contracts/thread-message";
 import type { ComposerAttachment, QueuedComposerMessage } from "../../../contracts/desktop-state";
 import { FileIcon } from "../../ui/icons";
 import { ImageAttachmentThumb } from "./image-attachment-thumb";
 import { parseAnnotatedPrompt } from "./annotations/annotation-prompt";
+import { parseCrossProjectMessage } from "../../../contracts/thread-message";
 
 function queuedPreview(text: string): string {
+  const crossProject = parseCrossProjectMessage(text);
+  if (crossProject) return `From project ${crossProject.project} · ${crossProject.body.trim()}`;
   const annotated = parseAnnotatedPrompt(text);
-  if (!annotated) return threadMessageDisplayText(text);
+  if (!annotated) return text;
   const count = annotated.annotations.length;
   const label = `${count} annotation${count === 1 ? "" : "s"}`;
   return annotated.body.trim() ? `${annotated.body.trim()} · ${label}` : label;
