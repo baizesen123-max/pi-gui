@@ -73,6 +73,9 @@ function canPublishToWindow(window: BrowserWindow): boolean {
 
 export class WindowOwner {
   private readonly lastPublishedTranscript = new Map<number, SelectedTranscriptRecord | null>();
+  // The model catalog each window last received. It is large and rarely changes, so pushes
+  // leave it out while it is the same object.
+  private readonly lastPublishedCatalog = new Map<number, DesktopAppState["runtimeByWorkspace"]>();
   private readonly windows = new Set<BrowserWindow>();
   private readonly windowIds = new WeakMap<BrowserWindow, number>();
   private readonly views = new Map<number, WindowViewState>();
@@ -118,6 +121,7 @@ export class WindowOwner {
     this.windowIds.delete(window);
     this.views.delete(webContentsId);
     this.lastPublishedTranscript.delete(webContentsId);
+    this.lastPublishedCatalog.delete(webContentsId);
 
     if (this.activeWindow === window) {
       this.activeWindow = [...this.windows].find((candidate) => !candidate.isDestroyed()) ?? null;
@@ -292,6 +296,7 @@ export class WindowOwner {
       return state;
     }
     const projected = this.projectAndRemember(window.webContents.id, state);
+    this.lastPublishedCatalog.set(window.webContents.id, projected.runtimeByWorkspace);
     window.webContents.send(desktopIpc.stateChanged, stateForPush(projected));
     this.publishTranscriptSoon(window);
     return projected;
@@ -354,7 +359,14 @@ export class WindowOwner {
         : (this.views.get(webContentsId) ?? viewFromState(state));
     const projected = this.projectState(webContentsId, state, view);
     this.views.set(webContentsId, viewFromState(projected));
-    window.webContents.send(desktopIpc.stateChanged, stateForPush(projected));
+    const pushed = stateForPush(projected);
+    if (this.lastPublishedCatalog.get(webContentsId) === projected.runtimeByWorkspace) {
+      const { runtimeByWorkspace: _unchanged, ...withoutCatalog } = pushed;
+      window.webContents.send(desktopIpc.stateChanged, withoutCatalog);
+      return;
+    }
+    this.lastPublishedCatalog.set(webContentsId, projected.runtimeByWorkspace);
+    window.webContents.send(desktopIpc.stateChanged, pushed);
   }
 
   private async publishTranscript(window: BrowserWindow): Promise<void> {

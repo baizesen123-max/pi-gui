@@ -426,3 +426,25 @@ test("an extension UI update patches only that session's UI and ignores stale on
   });
   expect(beforeState.liveSnapshot).toBeNull();
 });
+
+test("a state push without the model catalog keeps the catalog the window has", () => {
+  const runtimeByWorkspace = { ws: {} } as unknown as DesktopAppState["runtimeByWorkspace"];
+  const first = snapshot(1, { runtimeByWorkspace });
+  const { runtimeByWorkspace: _omitted, ...withoutCatalog } = snapshot(2, {
+    composerDraft: "next",
+  });
+
+  // Before the window has any state, such a push is ignored: the state pull brings it all.
+  expect(reduceAll([{ type: "state-pushed", state: withoutCatalog }]).liveSnapshot).toBeNull();
+
+  const model = reduceAll([
+    { type: "state-pushed", state: first },
+    { type: "state-pushed", state: withoutCatalog },
+  ]);
+  expect(model.liveSnapshot?.composerDraft).toBe("next");
+  expect(model.liveSnapshot?.runtimeByWorkspace).toBe(runtimeByWorkspace);
+
+  const replaced = snapshot(3);
+  const updated = reduceDesktopHydration(model, { type: "state-pushed", state: replaced });
+  expect(updated.liveSnapshot).toBe(replaced);
+});
