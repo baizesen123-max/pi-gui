@@ -17,6 +17,15 @@ export const sendMessageToThreadAction = "pi_gui_send_message_to_thread";
 export const archiveChildThreadsToolName = "archive_child_threads";
 export const archiveChildThreadsAction = "pi_gui_archive_child_threads";
 
+/** Every pi-gui thread tool. Their names are not file or search tools, whatever they contain. */
+export const orchestrationToolNames: ReadonlySet<string> = new Set([
+  createChildThreadToolName,
+  listThreadsToolName,
+  readThreadToolName,
+  sendMessageToThreadToolName,
+  archiveChildThreadsToolName,
+]);
+
 export interface ArchiveChildThreadsToolDetails {
   readonly action: typeof archiveChildThreadsAction;
   readonly archived: readonly string[];
