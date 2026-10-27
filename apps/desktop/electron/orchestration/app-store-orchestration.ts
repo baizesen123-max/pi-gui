@@ -26,7 +26,10 @@ import type {
   TimelineToolCall,
   TranscriptMessage,
 } from "../../contracts/desktop-state";
-import { formatCrossProjectMessage } from "../../contracts/thread-message";
+import {
+  formatCrossProjectMessage,
+  parseCrossProjectMessage,
+} from "../../contracts/thread-message";
 import { latestSessionActivityAt, previewFromTranscript } from "../application/app-store-utils";
 import type { RefreshStateOptions } from "../application/refresh-state-options";
 import {
@@ -123,6 +126,8 @@ interface OrchestrationOwnerHost {
     attachments: readonly import("../../contracts/desktop-state").ComposerAttachment[],
     options?: { readonly deliverAs?: "steer" | "followUp"; readonly allowCommands?: boolean },
   ): Promise<DesktopAppState>;
+  /** Sends or queues text without touching the receiving thread's draft or queue edit. */
+  deliverBackgroundInstruction(sessionRef: SessionRef, text: string): Promise<string | undefined>;
 }
 
 export interface OrchestrationOwner {
@@ -565,9 +570,7 @@ function updateListThreadsToolOutput(
     store,
     event,
     finalThreadToolProjectionFromOutput(event.output) ??
-      projectionFromToolResult(
-        listThreadsToolResult(store, event.sessionRef, listThreadsWorkspaceFromToolOutput(event)),
-      ),
+      projectionFromToolResult(listThreadsToolResult(store, event.sessionRef)),
   );
 }
 
@@ -769,15 +772,6 @@ function listThreadsToolResult(
   };
 }
 
-function listThreadsWorkspaceFromToolOutput(
-  event: Extract<SessionDriverEvent, { type: "toolFinished" }>,
-): string | undefined {
-  const output = event.output;
-  if (!isRecord(output) || !isRecord(output.details)) return undefined;
-  const workspace = output.details.workspace;
-  return typeof workspace === "string" && workspace ? workspace : undefined;
-}
-
 async function readThreadToolResult(
   store: OrchestrationOwnerHost,
   parentRef: SessionRef,
@@ -827,21 +821,41 @@ async function sendMessageToThreadToolResult(
   if (typeof target === "string") {
     return sendMessageToThreadErrorResult(input.threadId, input.message, target);
   }
+  if (parseCrossProjectMessage(input.message)) {
+    // Only the app writes this header, so the receiver's "From project" label is trustworthy.
+    return sendMessageToThreadErrorResult(
+      input.threadId,
+      input.message,
+      "The message cannot start with a [Message from project ...] header; send only the body.",
+    );
+  }
 
   const workspaces = store.orchestrationState().workspaces;
   const senderProject = projectOf(workspaces, parentRef.workspaceId);
   const targetProject = projectOf(workspaces, target.sessionRef.workspaceId);
   const crossProject = senderProject?.id !== targetProject?.id;
-  const text = crossProject
-    ? formatCrossProjectMessage(
-        { project: senderProject?.name ?? parentRef.workspaceId, threadId: sessionKey(parentRef) },
-        input.message,
-      )
-    : input.message;
-  await store.submitComposerToSession(target.sessionRef, text, [], {
-    deliverAs: "followUp",
-    allowCommands: false,
-  });
+  if (crossProject) {
+    // Another project's thread may be mid-edit by the user; leave its composer alone.
+    try {
+      await store.deliverBackgroundInstruction(
+        target.sessionRef,
+        formatCrossProjectMessage(
+          {
+            project: senderProject?.name ?? parentRef.workspaceId,
+            threadId: sessionKey(parentRef),
+          },
+          input.message,
+        ),
+      );
+    } catch (error) {
+      return sendMessageToThreadErrorResult(input.threadId, input.message, errorMessage(error));
+    }
+  } else {
+    await store.submitComposerToSession(target.sessionRef, input.message, [], {
+      deliverAs: "followUp",
+      allowCommands: false,
+    });
+  }
   if (target.child) {
     updateChildSupervisionLoop(
       store,
@@ -1722,7 +1736,7 @@ function listThreadsForContext(
 /**
  * Threads in the projects `workspace` names: a name, path or id, or `*` for all of them.
  * The caller's own project lists exactly as {@link listThreadsForContext} does; other
- * workspaces' threads use their unambiguous `workspaceId:sessionId` as the thread id.
+ * projects' threads use their unambiguous `workspaceId:sessionId` as the thread id.
  */
 function listThreadsInWorkspaces(
   store: OrchestrationOwnerHost,
@@ -1731,18 +1745,19 @@ function listThreadsInWorkspaces(
 ): readonly ThreadListEntry[] | string {
   const workspaces = store.orchestrationState().workspaces;
   const wanted = workspace.trim();
+  const names = (entry: (typeof workspaces)[number] | undefined) =>
+    !!entry &&
+    (entry.id === wanted ||
+      entry.path === wanted ||
+      entry.name.toLowerCase() === wanted.toLowerCase());
+  // Naming a project lists its worktrees too; naming a worktree lists only that worktree.
   const matches =
     wanted === "*"
       ? workspaces
-      : workspaces.filter(
-          (entry) =>
-            entry.id === wanted ||
-            entry.path === wanted ||
-            entry.name.toLowerCase() === wanted.toLowerCase(),
-        );
+      : workspaces.filter((entry) => names(entry) || names(projectOf(workspaces, entry.id)));
   if (matches.length === 0) {
-    const names = workspaces.map((entry) => entry.name).join(", ");
-    return `Unknown project: ${wanted}. Projects: ${names || "none"}.`;
+    const known = workspaces.map((entry) => entry.name).join(", ");
+    return `Unknown project: ${wanted}. Projects: ${known || "none"}.`;
   }
   const entries = new Map<string, ThreadListEntry>();
   if (matches.some((entry) => entry.id === parentRef.workspaceId)) {
@@ -1753,7 +1768,8 @@ function listThreadsInWorkspaces(
   const callerProject = projectOf(workspaces, parentRef.workspaceId);
   for (const entry of matches) {
     const project = projectOf(workspaces, entry.id);
-    const otherProject = project?.id !== callerProject?.id;
+    // The caller's own project lists only what its default listing shows, as on main.
+    if (project?.id === callerProject?.id) continue;
     for (const session of entry.sessions) {
       const ref = { workspaceId: entry.id, sessionId: session.id };
       const key = sessionKey(ref);
@@ -1766,8 +1782,8 @@ function listThreadsInWorkspaces(
         sessionId: session.id,
         title: session.title,
         status: session.status,
-        relationship: otherProject ? "other_project" : "workspace",
-        ...(otherProject && project ? { project: project.name } : {}),
+        relationship: "other_project",
+        project: project?.name ?? entry.name,
         updatedAt: session.updatedAt,
         preview: session.preview ?? "",
       });
@@ -1776,23 +1792,27 @@ function listThreadsInWorkspaces(
   return [...entries.values()].sort(compareThreadListEntries);
 }
 
-/** A thread outside the caller's own listing, named by `workspaceId:sessionId` or a unique session id. */
-function resolveThreadInAnyWorkspace(
+/**
+ * A thread in another project, named by the `workspaceId:sessionId` id list_threads gives it.
+ * Threads of the caller's own project resolve only through its own listing, as before.
+ */
+function resolveOtherProjectThread(
   store: OrchestrationOwnerHost,
+  parentRef: SessionRef,
   threadId: string,
 ): ResolvedThreadTarget | string {
-  const refs = store
-    .orchestrationState()
-    .workspaces.flatMap((workspace) =>
-      workspace.sessions
-        .filter((session) => !session.archivedAt)
-        .map((session) => ({ workspaceId: workspace.id, sessionId: session.id })),
-    )
-    .filter((ref) => sessionKey(ref) === threadId || ref.sessionId === threadId);
-  if (refs.length > 1) {
-    return `Thread id ${threadId} matches threads in several projects; use the workspaceId:sessionId thread id from list_threads.`;
+  const workspaces = store.orchestrationState().workspaces;
+  const callerProject = projectOf(workspaces, parentRef.workspaceId);
+  for (const workspace of workspaces) {
+    if (projectOf(workspaces, workspace.id)?.id === callerProject?.id) continue;
+    const session = workspace.sessions.find(
+      (entry) =>
+        !entry.archivedAt &&
+        sessionKey({ workspaceId: workspace.id, sessionId: entry.id }) === threadId,
+    );
+    if (session) return { sessionRef: { workspaceId: workspace.id, sessionId: session.id } };
   }
-  return refs[0] ? { sessionRef: refs[0] } : `Unknown thread: ${threadId}`;
+  return `Unknown thread: ${threadId}`;
 }
 
 /** The primary workspace a workspace belongs to; its worktrees share the project. */
@@ -1860,7 +1880,7 @@ function resolveThreadTarget(
       `${thread.workspaceId}:${thread.sessionId}` === normalized,
   );
   if (!visibleThread) {
-    return resolveThreadInAnyWorkspace(store, normalized);
+    return resolveOtherProjectThread(store, parentRef, normalized);
   }
 
   const child = visibleThread.childThreadId

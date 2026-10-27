@@ -731,7 +731,7 @@ async function deliverBackgroundInstruction(
 ): Promise<string | undefined> {
   const instruction = text.trim();
   if (!instruction) {
-    throw new Error("Scheduled task instruction is empty.");
+    throw new Error("The instruction is empty.");
   }
   await store.ensureSessionReady(sessionRef);
   const session = store.sessionFromState(sessionRef);
@@ -739,7 +739,7 @@ async function deliverBackgroundInstruction(
     throw new Error(`Unknown session: ${sessionRef.workspaceId}:${sessionRef.sessionId}`);
   }
   if (session.archivedAt) {
-    throw new Error("Scheduled task target thread is archived.");
+    throw new Error("The target thread is archived.");
   }
 
   store.recordUserMessageRecency(sessionRef);
