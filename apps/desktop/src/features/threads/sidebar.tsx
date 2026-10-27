@@ -266,7 +266,12 @@ export function Sidebar(props: SidebarProps) {
       if (![...ancestors].some((key) => current.has(key))) return current;
       return new Set([...current].filter((key) => !ancestors.has(key)));
     });
-  }, [selectedWorkspace?.id, selectedSession?.id, renameSessionId]);
+  }, [
+    selectedWorkspace?.id,
+    selectedSession?.id,
+    renameSessionId,
+    threadSidebarModel.recencyOrder,
+  ]);
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
   const pinnedSortableId = (thread: ThreadListEntry) => `pinned:${sessionThreadKey(thread)}`;
@@ -336,11 +341,9 @@ export function Sidebar(props: SidebarProps) {
       : [];
   };
 
+  // recencyOrder holds every unarchived thread, including children nested under another folder's parent.
   const folderHasThreads = (folderId: string) =>
-    threadSidebarModel.workspaceGroups.some(
-      (group) => group.workspace.id === folderId && group.threads.length > 0,
-    ) ||
-    threadSidebarModel.pinnedThreads.some((thread) => thread.folderId === folderId) ||
+    threadSidebarModel.recencyOrder.some((thread) => thread.folderId === folderId) ||
     threadSidebarModel.archivedThreads.some((thread) => thread.folderId === folderId);
   const showFolderRow = (group: WorkspaceThreadGroup) =>
     threadGrouping === "workspace" || !folderHasThreads(group.workspace.id);

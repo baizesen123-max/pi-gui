@@ -327,10 +327,11 @@ async function archiveIdleSession(
 ): Promise<DesktopAppState> {
   await store.initialize();
   // The guarded write comes first: a refused archive leaves pins and titles alone.
+  // An agent asked for this, so the user's selection stays where it is.
   await store.driver.archiveSessionIfIdle(sessionRef);
   store.clearPendingAutoTitle(sessionRef);
   store.unpinSession(sessionRef);
-  return store.refreshState(selectionAfterArchiving(store.workspaceState(), sessionRef));
+  return store.refreshState();
 }
 
 function selectionAfterArchiving(

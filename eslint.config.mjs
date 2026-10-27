@@ -120,7 +120,8 @@ export default [
       "no-restricted-syntax": [
         "error",
         {
-          selector: "MemberExpression[property.name='orchestrationChildren']",
+          selector:
+            "MemberExpression[property.name='orchestrationChildren'], ObjectPattern > Property[key.name='orchestrationChildren']",
           message:
             "The window never receives orchestrationChildren. Read state.childThreadLinks for the parent/child tree.",
         },

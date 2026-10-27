@@ -125,7 +125,12 @@ test("create_child_thread returns after a slow worker starts, before its turn co
       params: { thread_ids: [child!.id] },
     });
     expect(archivedWhileRunning.details?.archived).toEqual([]);
-    expect(archivedWhileRunning.details?.skipped).toHaveLength(1);
+    expect(archivedWhileRunning.details?.skipped).toEqual([
+      {
+        threadId: child!.id,
+        reason: "Child thread is running or has queued messages; it was not archived.",
+      },
+    ]);
     const queued = await runOrchestrationRuntimeTool(harness, {
       toolName: "send_message_to_thread",
       sessionRef: parentRef,

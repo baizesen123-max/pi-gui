@@ -39,7 +39,7 @@ test("children nest under their parent; the archive tool archives only finished 
   const [parent, otherParent, done, incomplete, foreign] = fixtures;
   if (!parent || !otherParent || !done || !incomplete || !foreign)
     throw new Error("Missing fixtures");
-  // The interrupted child's last turn never got a reply: drop its assistant entry.
+  // The interrupted child got a follow-up after its reply and never answered it.
   const sessionFiles = await readdir(join(agentDir, "sessions"), { recursive: true });
   const name = sessionFiles.find(
     (file) => file.endsWith(".jsonl") && file.includes(incomplete.sessionId),
@@ -47,15 +47,19 @@ test("children nest under their parent; the archive tool archives only finished 
   if (!name) throw new Error("Fixture file not found");
   const path = join(agentDir, "sessions", name);
   const lines = (await readFile(path, "utf8")).trim().split("\n");
-  await writeFile(
-    path,
-    lines
-      .filter(
-        (line) =>
-          (JSON.parse(line) as { message?: { role: string } }).message?.role !== "assistant",
-      )
-      .join("\n") + "\n",
+  const entries = lines.map((line) => JSON.parse(line) as Record<string, unknown>);
+  const userEntry = entries.find(
+    (entry) => (entry.message as { role?: string } | undefined)?.role === "user",
   );
+  if (!userEntry) throw new Error("Fixture user message not found");
+  const followUp = {
+    ...userEntry,
+    id: "unanswered-follow-up",
+    parentId: entries.at(-1)?.id,
+    timestamp: new Date().toISOString(),
+    message: { role: "user", content: "继续完成剩下的工作", timestamp: Date.now() },
+  };
+  await writeFile(path, [...lines, JSON.stringify(followUp)].join("\n") + "\n");
   const now = new Date().toISOString();
   const children: OrchestrationChildThread[] = [done, incomplete, foreign].map((child, index) => ({
     id: `child-${index}`,
@@ -130,7 +134,15 @@ test("children nest under their parent; the archive tool archives only finished 
       contentType: "application/json",
     });
     expect(result.details?.archived, JSON.stringify(result.details)).toEqual(["child-0"]);
-    expect(result.details?.skipped).toHaveLength(3);
+    const notOwn = "Only direct child threads of this thread can be archived.";
+    expect(result.details?.skipped).toEqual([
+      {
+        threadId: "child-1",
+        reason: "Child thread's last turn did not end with a reply; it was not archived.",
+      },
+      { threadId: "child-2", reason: notOwn },
+      { threadId: parent.sessionId, reason: notOwn },
+    ]);
     await expect(group.locator(".session-row")).toHaveCount(1);
     await expect(window.getByTestId("composer")).toHaveValue(parentDraft);
     const listed = await runOrchestrationRuntimeTool(harness, {

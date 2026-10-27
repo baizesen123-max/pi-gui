@@ -315,9 +315,10 @@ function createArchiveChildThreadsTool(
           },
         };
       }
-      return bridge.archiveChildThreads(ctx, [
-        ...new Set(params.thread_ids.map((id: string) => id.trim())),
-      ]);
+      return bridge.archiveChildThreads(
+        ctx,
+        params.thread_ids.map((id: string) => id.trim()),
+      );
     },
   };
 }
