@@ -315,3 +315,25 @@ await test("session writes that change nothing leave the catalog file alone", as
     assert.equal(await reopened.getSessionFile(session.sessionRef), "/session.jsonl");
   });
 });
+
+await test("a stopped-reply mark survives a reload and clears when a later write omits it", async () => {
+  await withTempDir(async (dir) => {
+    const catalogFilePath = join(dir, "catalogs.json");
+    const entry = {
+      sessionRef: { workspaceId: "ws", sessionId: "child" },
+      workspaceId: "ws",
+      title: "Child",
+      updatedAt: timestamp,
+      status: "idle" as const,
+    };
+    await new JsonCatalogStore({ catalogFilePath }).sessions.upsertSession({
+      ...entry,
+      stoppedReplyId: "reply-1",
+    });
+    const reopened = new JsonCatalogStore({ catalogFilePath });
+    assert.equal((await reopened.sessions.getSession(entry.sessionRef))?.stoppedReplyId, "reply-1");
+    await reopened.sessions.upsertSession(entry);
+    const cleared = new JsonCatalogStore({ catalogFilePath });
+    assert.equal((await cleared.sessions.getSession(entry.sessionRef))?.stoppedReplyId, undefined);
+  });
+});

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test, { type TestContext } from "node:test";
@@ -126,10 +126,11 @@ async function fixture(
       return runtime;
     },
   });
-  const snapshot = await driver.createSession(
-    { workspaceId: "boundary-workspace", path: cwd },
-    { initialModel: { provider: "boundary-test", modelId: "scripted" } },
-  );
+  // The workspace as the app registers it, so a later sync rebuilds this session's entry.
+  const { workspace } = await driver.syncWorkspace(cwd, "Boundary");
+  const snapshot = await driver.createSession(workspace, {
+    initialModel: { provider: "boundary-test", modelId: "scripted" },
+  });
   const ref = snapshot.ref;
   const unsubscribe = driver.subscribe(ref, (event) => {
     events.push(event);
@@ -155,7 +156,26 @@ async function fixture(
   return {
     driver,
     ref,
+    root,
+    workspacePath: cwd,
     runtime,
+    /** A second driver on the same catalog and agent dir, as after an app restart. */
+    restartedDriver: () => {
+      const restarted = new PiSdkDriver({
+        agentDir,
+        catalogFilePath: join(root, "catalogs.json"),
+        createAgentSessionRuntimeImpl: async (options) => {
+          const reopened = await createAgentSessionRuntimeWithNpmFallback({
+            ...options,
+            tools: [],
+          });
+          reopened.session.agent.streamFunction = streamFunction;
+          return reopened;
+        },
+      });
+      t.after(() => restarted.closeSession(ref));
+      return restarted;
+    },
     events,
     rawEvents,
     until,
@@ -494,5 +514,39 @@ await test(
       /last run changed/,
     );
     assert.equal((await h.driver.openSession(h.ref)).archivedAt, undefined);
+
+    // pi's session file holds only the normal reply; after a restart the Stop must still count.
+    await h.driver.closeSession(h.ref);
+    assert.match(
+      await readFile(join(h.root, "catalogs.json"), "utf8"),
+      /"stoppedReplyId": ?"[^"]+"/,
+    );
+    const restarted = h.restartedDriver();
+    // The app syncs the workspace at startup, which rebuilds every catalog entry.
+    const synced = await restarted.syncWorkspace(h.workspacePath, "Boundary");
+    assert.equal(synced.workspace.workspaceId, h.ref.workspaceId);
+    assert.ok(
+      synced.sessions.find((entry) => entry.sessionRef.sessionId === h.ref.sessionId)
+        ?.stoppedReplyId,
+      "the sync keeps this session's mark",
+    );
+    // Archiving and restoring the cold session rewrites its catalog entry; the mark stays.
+    await restarted.archiveSession(h.ref);
+    await restarted.unarchiveSession(h.ref);
+    assert.match(await readFile(join(h.root, "catalogs.json"), "utf8"), /"stoppedReplyId"/);
+    const reopened = await restarted.openSession(h.ref);
+    assert.equal(reopened.lastRunOutcome, "stopped");
+    await assert.rejects(
+      restarted.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }),
+      /last run changed/,
+    );
+    assert.equal((await restarted.openSession(h.ref)).archivedAt, undefined);
+
+    // The next run clears it, in memory and in the catalog.
+    await restarted.sendUserMessage(h.ref, { text: "Finish the review" });
+    const finished = await restarted.openSession(h.ref);
+    assert.equal(finished.status, "idle");
+    assert.equal(finished.lastRunOutcome, "completed");
+    assert.doesNotMatch(await readFile(join(h.root, "catalogs.json"), "utf8"), /stoppedReplyId/);
   },
 );

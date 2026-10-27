@@ -83,7 +83,12 @@ function isSessionEntry(value: unknown): value is SessionCatalogEntry {
   return (
     isRecord(value) &&
     hasStrings(value, ["workspaceId", "title", "updatedAt"]) &&
-    hasOptionalStrings(value, ["archivedAt", "previewSnippet", "sessionFilePath"]) &&
+    hasOptionalStrings(value, [
+      "archivedAt",
+      "previewSnippet",
+      "sessionFilePath",
+      "stoppedReplyId",
+    ]) &&
     isRecord(value.sessionRef) &&
     hasStrings(value.sessionRef, ["workspaceId", "sessionId"]) &&
     value.sessionRef.workspaceId === value.workspaceId &&

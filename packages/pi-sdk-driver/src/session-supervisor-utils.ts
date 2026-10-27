@@ -47,8 +47,13 @@ export interface SnapshotSource {
   readonly runningRunId: string | undefined;
   readonly queuedMessages: readonly SessionQueuedMessage[];
   readonly usage?: SessionUsageSnapshot | undefined;
-  readonly session?: { readonly messages: readonly unknown[] } | undefined;
-  readonly lastRunAborted?: boolean | undefined;
+  readonly session?:
+    | {
+        readonly messages: readonly unknown[];
+        readonly sessionManager?: { getBranch(): readonly unknown[] };
+      }
+    | undefined;
+  readonly stoppedReplyId?: string | undefined;
 }
 
 /**
@@ -78,22 +83,44 @@ export function lastRunOutcome(messages: readonly unknown[]): SessionRunOutcome 
   return undefined;
 }
 
+/** The entry id of the newest assistant reply on a pi session branch. */
+export function newestReplyEntryId(branch: readonly unknown[]): string | undefined {
+  for (let i = branch.length - 1; i >= 0; i--) {
+    const entry = branch[i];
+    if (
+      isRecord(entry) &&
+      entry.type === "message" &&
+      isRecord(entry.message) &&
+      entry.message.role === "assistant" &&
+      typeof entry.id === "string"
+    ) {
+      return entry.id;
+    }
+  }
+  return undefined;
+}
+
 /**
- * lastRunOutcome, plus pi's own report that the last run was aborted (agent_settled
- * `aborted`). A Stop while an extension's agent_before_settle handler is pending leaves no
- * aborted reply, so the earlier normal reply would otherwise read as completed.
+ * lastRunOutcome, plus pi's own report that the run was aborted (agent_settled `aborted`).
+ * A Stop while an extension's agent_before_settle handler is pending leaves no aborted
+ * reply, so the earlier normal reply would otherwise read as completed. `stoppedReplyId` is
+ * the newest reply when that Stop settled; once a newer reply exists, or the branch moved,
+ * the newest reply decides on its own.
  */
-export function sessionRunOutcome(
-  messages: readonly unknown[],
-  lastRunAborted: boolean | undefined,
-): SessionRunOutcome | undefined {
-  const outcome = lastRunOutcome(messages);
-  return lastRunAborted && outcome === "completed" ? "stopped" : outcome;
+export function sessionRunOutcome(source: {
+  readonly session: NonNullable<SnapshotSource["session"]>;
+  readonly stoppedReplyId?: string | undefined;
+}): SessionRunOutcome | undefined {
+  const outcome = lastRunOutcome(source.session.messages);
+  if (outcome !== "completed" || source.stoppedReplyId === undefined) return outcome;
+  // Without the branch the mark cannot be ruled out, so it counts: an archive is refused.
+  const branch = source.session.sessionManager?.getBranch();
+  return !branch || newestReplyEntryId(branch) === source.stoppedReplyId ? "stopped" : outcome;
 }
 
 export function buildSnapshot(source: SnapshotSource): SessionSnapshot {
   const outcome = source.session
-    ? sessionRunOutcome(source.session.messages, source.lastRunAborted)
+    ? sessionRunOutcome({ session: source.session, stoppedReplyId: source.stoppedReplyId })
     : undefined;
   return {
     ref: { ...source.ref },

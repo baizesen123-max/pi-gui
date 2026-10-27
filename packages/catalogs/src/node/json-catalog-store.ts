@@ -375,6 +375,7 @@ function areSessionEntriesEqual(left: SessionCatalogEntry, right: SessionCatalog
     left.archivedAt === right.archivedAt &&
     left.previewSnippet === right.previewSnippet &&
     left.sessionFilePath === right.sessionFilePath &&
+    left.stoppedReplyId === right.stoppedReplyId &&
     left.status === right.status
   );
 }

@@ -187,16 +187,20 @@ await test("a session stopped after partial text snapshots as stopped, not compl
   assert.equal(buildSnapshot(source).lastRunOutcome, undefined);
 });
 
-await test("a run pi reports as aborted reads as stopped even when its last reply ended normally", () => {
-  const replied = [
-    { role: "user", content: "review" },
-    { role: "assistant", stopReason: "stop", content: "Review in progress" },
-    { role: "custom", content: "Keep reviewing" },
+await test("a stopped reply reads as stopped only while it is still the newest reply", () => {
+  const reply = { role: "assistant", stopReason: "stop", content: "Review in progress" };
+  const branch: unknown[] = [
+    { type: "message", id: "u1", message: { role: "user" } },
+    { type: "message", id: "a1", message: reply },
+    { type: "custom_message", id: "c1" },
   ];
-  assert.equal(sessionRunOutcome(replied, false), "completed");
-  assert.equal(sessionRunOutcome(replied, true), "stopped");
-  assert.equal(
-    sessionRunOutcome([...replied, { role: "assistant", stopReason: "error" }], true),
-    "failed",
-  );
+  const session = {
+    messages: [{ role: "user", content: "review" }, reply],
+    sessionManager: { getBranch: () => branch },
+  };
+  assert.equal(sessionRunOutcome({ session }), "completed");
+  assert.equal(sessionRunOutcome({ session, stoppedReplyId: "a1" }), "stopped");
+  // A newer reply, from this app or pi run elsewhere, or another branch, decides on its own.
+  branch.push({ type: "message", id: "a2", message: reply });
+  assert.equal(sessionRunOutcome({ session, stoppedReplyId: "a1" }), "completed");
 });

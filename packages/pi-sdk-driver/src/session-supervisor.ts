@@ -111,6 +111,7 @@ import {
   transcriptItemFromPinEntry,
   customMessageTranscriptItem,
   isHiddenCustomMessage,
+  newestReplyEntryId,
   sessionRunOutcome,
   truncate,
   workspaceToRef,
@@ -221,8 +222,11 @@ interface ManagedSessionRecord {
    */
   abortOnRunStart: boolean;
   pendingRunOutcome: RunOutcome | undefined;
-  /** pi's agent_settled `aborted` for the last run; cleared when the next run starts. */
-  lastRunAborted: boolean;
+  /**
+   * The newest reply entry when pi settled a run it reports aborted; cleared when the next
+   * run starts. Saved in the session catalog so it survives a restart.
+   */
+  stoppedReplyId: string | undefined;
   queuedMessages: SessionQueuedMessage[];
   /** Taken off the queue to start a turn; shown in the transcript when pi starts it. */
   startingQueuedMessage: SessionQueuedMessage | undefined;
@@ -537,6 +541,16 @@ export class SessionSupervisor {
       mergedEntries,
       nextSessionFiles,
     );
+    // A session can settle a stopped run (and even close) while the sync awaits; its own write
+    // may have landed before the replace and been overwritten, so write the current mark back.
+    for (const entry of mergedEntries) {
+      const record = this.records.get(sessionKey(entry.sessionRef));
+      if (!record || record.stoppedReplyId === entry.stoppedReplyId) continue;
+      const repaired = { ...entry };
+      if (record.stoppedReplyId === undefined) delete repaired.stoppedReplyId;
+      else repaired.stoppedReplyId = record.stoppedReplyId;
+      await this.catalogs.sessions.upsertSession(repaired);
+    }
     for (const session of existingSessions) {
       const key = sessionKey(session.sessionRef);
       if (discoveredKeys.has(key) || preservedKeys.has(key)) {
@@ -997,7 +1011,8 @@ export class SessionSupervisor {
     // The caller judged the work from facts it saw earlier; refuse if they changed since.
     if (
       expect.lastRunOutcome !== undefined &&
-      sessionRunOutcome(session.messages, record.lastRunAborted) !== expect.lastRunOutcome
+      sessionRunOutcome({ session, stoppedReplyId: record.stoppedReplyId }) !==
+        expect.lastRunOutcome
     ) {
       throw new Error("The thread's last run changed since it was checked; it was not archived.");
     }
@@ -1740,6 +1755,7 @@ export class SessionSupervisor {
     record.status = sessionEntry.status;
     record.updatedAt = sessionEntry.updatedAt;
     record.archivedAt = sessionEntry.archivedAt;
+    record.stoppedReplyId = sessionEntry.stoppedReplyId;
     record.preview = sessionEntry.previewSnippet ?? undefined;
     record.config = deriveSessionConfig(session.sessionManager);
     record.closed = false;
@@ -1780,7 +1796,7 @@ export class SessionSupervisor {
       promptStarting: false,
       abortOnRunStart: false,
       pendingRunOutcome: undefined,
-      lastRunAborted: false,
+      stoppedReplyId: undefined,
       queuedMessages: [],
       startingQueuedMessage: undefined,
       queuedStartScheduled: false,
@@ -1990,6 +2006,14 @@ export class SessionSupervisor {
 
     if (previousKey !== nextKey) {
       const existingTarget = this.records.get(nextKey);
+      // The stopped-reply mark belongs to the session being switched to, not the one left.
+      const targetStoppedReplyId =
+        existingTarget &&
+        existingTarget !== record &&
+        existingTarget.session &&
+        !existingTarget.closed
+          ? existingTarget.stoppedReplyId
+          : (await this.catalogs.sessions.getSession(nextRef))?.stoppedReplyId;
       if (existingTarget && existingTarget !== record) {
         for (const listener of existingTarget.listeners) {
           record.listeners.add(listener);
@@ -2001,6 +2025,7 @@ export class SessionSupervisor {
       }
       this.records.delete(previousKey);
       record.ref = nextRef;
+      record.stoppedReplyId = targetStoppedReplyId;
       this.records.set(nextKey, record);
     }
 
@@ -2687,7 +2712,7 @@ export class SessionSupervisor {
         }
         record.runningRunId ??= crypto.randomUUID();
         record.pendingRunOutcome = undefined;
-        record.lastRunAborted = false;
+        record.stoppedReplyId = undefined;
         record.status = "running";
         return [sessionUpdatedEvent(record)];
       case "turn_start":
@@ -2836,7 +2861,10 @@ export class SessionSupervisor {
           : record.pendingRunOutcome;
         record.pendingRunOutcome = undefined;
         record.cancellationRequested = false;
-        record.lastRunAborted = event.aborted;
+        record.stoppedReplyId =
+          event.aborted && record.session
+            ? newestReplyEntryId(record.session.sessionManager.getBranch())
+            : undefined;
         const runId = record.runningRunId;
         record.runningRunId = undefined;
         record.status = outcome?.status === "failed" ? "failed" : "idle";
@@ -2987,6 +3015,7 @@ export class SessionSupervisor {
       ...(snapshot.archivedAt !== undefined ? { archivedAt: snapshot.archivedAt } : {}),
       ...(snapshot.preview !== undefined ? { previewSnippet: snapshot.preview } : {}),
       ...(record.sessionFile ? { sessionFilePath: record.sessionFile } : {}),
+      ...(record.stoppedReplyId !== undefined ? { stoppedReplyId: record.stoppedReplyId } : {}),
     });
     if (record.sessionFile) {
       await this.catalogs.setSessionFile(record.ref, record.sessionFile);
@@ -3115,6 +3144,9 @@ export class SessionSupervisor {
         : undefined;
     const previewSnippet = runtimeSnapshot?.preview ?? previewFromSessionInfo(info);
     const archivedAt = runtimeSnapshot?.archivedAt ?? existingEntry?.archivedAt;
+    const stoppedReplyId = runtimeSnapshot
+      ? runtimeRecord?.stoppedReplyId
+      : existingEntry?.stoppedReplyId;
     const titleFromInfo = titleFromSessionInfo(info);
     const entry: SessionCatalogSnapshot["sessions"][number] = {
       sessionRef: {
@@ -3133,6 +3165,9 @@ export class SessionSupervisor {
     }
     if (previewSnippet !== undefined) {
       entry.previewSnippet = previewSnippet;
+    }
+    if (stoppedReplyId !== undefined) {
+      entry.stoppedReplyId = stoppedReplyId;
     }
     return entry;
   }
@@ -3161,22 +3196,10 @@ export class SessionSupervisor {
       return;
     }
 
-    const nextEntry =
-      archivedAt !== undefined
-        ? { ...sessionEntry, archivedAt }
-        : {
-            sessionRef: sessionEntry.sessionRef,
-            workspaceId: sessionEntry.workspaceId,
-            title: sessionEntry.title,
-            updatedAt: sessionEntry.updatedAt,
-            ...(sessionEntry.previewSnippet !== undefined
-              ? { previewSnippet: sessionEntry.previewSnippet }
-              : {}),
-            ...(sessionEntry.sessionFilePath !== undefined
-              ? { sessionFilePath: sessionEntry.sessionFilePath }
-              : {}),
-            status: sessionEntry.status,
-          };
+    // Unarchiving drops only archivedAt; every other field the entry holds stays.
+    const nextEntry: SessionCatalogSnapshot["sessions"][number] = { ...sessionEntry };
+    if (archivedAt === undefined) delete nextEntry.archivedAt;
+    else nextEntry.archivedAt = archivedAt;
 
     await this.catalogs.sessions.upsertSession(nextEntry);
   }
