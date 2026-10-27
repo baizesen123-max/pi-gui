@@ -183,3 +183,14 @@ await test("idle archive refuses while a queue change is still being applied", a
   await f.supervisor.archiveSessionIfIdle(f.record.ref);
   assert.ok(f.record.archivedAt);
 });
+
+await test("a send that started after an archive landed brings the thread back", async () => {
+  const f = fixture();
+  await f.supervisor.archiveSessionIfIdle(f.record.ref);
+  assert.ok(f.record.archivedAt);
+  // The fixture has no real pi session, so the prompt itself fails after the send starts.
+  await f.supervisor
+    .sendUserMessage(f.record.ref, { text: "one more thing" })
+    .catch(() => undefined);
+  assert.equal(f.record.archivedAt, undefined);
+});

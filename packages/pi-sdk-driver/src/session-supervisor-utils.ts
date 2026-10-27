@@ -50,11 +50,19 @@ export interface SnapshotSource {
   readonly session?: { readonly messages: readonly unknown[] } | undefined;
 }
 
-/** The newest assistant message's stop reason, as a fact; callers decide what it means. */
+/**
+ * How the newest assistant reply ended, from its stop reason, as a fact; callers decide
+ * what it means. A user message newer than that reply makes it "incomplete": the reply
+ * did not answer the latest input.
+ */
 export function lastRunOutcome(messages: readonly unknown[]): SessionRunOutcome | undefined {
+  let unansweredUserMessage = false;
   for (let i = messages.length - 1; i >= 0; i--) {
     const message = messages[i];
-    if (!isRecord(message) || message.role !== "assistant") continue;
+    if (!isRecord(message)) continue;
+    if (message.role === "user") unansweredUserMessage = true;
+    if (message.role !== "assistant") continue;
+    if (unansweredUserMessage) return "incomplete";
     switch (message.stopReason) {
       case "stop":
         return "completed";

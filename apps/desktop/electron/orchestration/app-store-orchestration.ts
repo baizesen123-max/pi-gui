@@ -712,8 +712,8 @@ async function archiveFinishedChild(
 }
 
 /**
- * Finished means idle with an empty queue, the newest reply completed normally (not
- * stopped, failed, or cut off), and no user message came after it.
+ * Finished means idle with an empty queue, and the driver reports the newest reply
+ * completed normally: not stopped, failed, cut off, or followed by an unanswered message.
  */
 function unfinishedChildReason(store: OrchestrationOwnerHost, ref: SessionRef): string | undefined {
   const session = store.sessionFromState(ref);
@@ -724,14 +724,9 @@ function unfinishedChildReason(store: OrchestrationOwnerHost, ref: SessionRef): 
   if (status === "failed") return "Child thread's last run failed";
   const outcome = store.lastRunOutcome(ref);
   if (outcome === "stopped") return "Child thread's last run was stopped before it finished";
+  if (outcome === "incomplete") return "Child thread's last turn did not end with a reply";
   if (outcome !== "completed") return "Child thread's last run did not complete";
-  const transcript = store.transcriptFor(ref);
-  for (let index = transcript.length - 1; index >= 0; index--) {
-    const item = transcript[index]!;
-    if (item.kind === "message" && item.role === "assistant") return undefined;
-    if (item.kind === "tool" || (item.kind === "message" && item.role === "user")) break;
-  }
-  return "Child thread's last turn did not end with a reply";
+  return undefined;
 }
 
 function listThreadsToolResult(

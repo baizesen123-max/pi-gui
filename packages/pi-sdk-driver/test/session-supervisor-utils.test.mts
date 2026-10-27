@@ -159,6 +159,7 @@ await test("lastRunOutcome reports how the newest assistant reply ended", () => 
   assert.equal(lastRunOutcome(reply("length")), "incomplete");
   assert.equal(lastRunOutcome(reply("toolUse")), "incomplete");
   assert.equal(lastRunOutcome([...reply("aborted"), { role: "toolResult" }]), "stopped");
+  assert.equal(lastRunOutcome([...reply("stop"), { role: "user", content: "and?" }]), "incomplete");
 });
 
 await test("a session stopped after partial text snapshots as stopped, not completed", () => {

@@ -1065,6 +1065,9 @@ export class SessionSupervisor {
     record.runningRunId = runId ?? record.runningRunId;
     record.status = isQueuedMessage || isExtensionCommand ? record.status : "running";
     record.updatedAt = nowIso();
+    // A thread given work is not archived. This also undoes an archive that landed while
+    // the caller was still preparing this send, before the driver saw it.
+    if (!isExtensionCommand) record.archivedAt = undefined;
     record.config = deriveSessionConfig(session.sessionManager);
     // A card button's command is not something the user said, so it leaves the preview.
     if (!input.extensionCommandOnly) record.preview = truncate(input.text);
