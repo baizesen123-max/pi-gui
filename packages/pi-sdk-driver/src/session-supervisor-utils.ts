@@ -48,6 +48,7 @@ export interface SnapshotSource {
   readonly queuedMessages: readonly SessionQueuedMessage[];
   readonly usage?: SessionUsageSnapshot | undefined;
   readonly session?: { readonly messages: readonly unknown[] } | undefined;
+  readonly lastRunAborted?: boolean | undefined;
 }
 
 /**
@@ -77,8 +78,23 @@ export function lastRunOutcome(messages: readonly unknown[]): SessionRunOutcome 
   return undefined;
 }
 
+/**
+ * lastRunOutcome, plus pi's own report that the last run was aborted (agent_settled
+ * `aborted`). A Stop while an extension's agent_before_settle handler is pending leaves no
+ * aborted reply, so the earlier normal reply would otherwise read as completed.
+ */
+export function sessionRunOutcome(
+  messages: readonly unknown[],
+  lastRunAborted: boolean | undefined,
+): SessionRunOutcome | undefined {
+  const outcome = lastRunOutcome(messages);
+  return lastRunAborted && outcome === "completed" ? "stopped" : outcome;
+}
+
 export function buildSnapshot(source: SnapshotSource): SessionSnapshot {
-  const outcome = source.session ? lastRunOutcome(source.session.messages) : undefined;
+  const outcome = source.session
+    ? sessionRunOutcome(source.session.messages, source.lastRunAborted)
+    : undefined;
   return {
     ref: { ...source.ref },
     workspace: { ...source.workspace },

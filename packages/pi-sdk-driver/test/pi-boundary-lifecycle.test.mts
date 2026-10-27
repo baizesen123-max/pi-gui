@@ -439,3 +439,60 @@ await test(
     );
   },
 );
+
+await test(
+  "a Stop while an extension's before-settle continuation is pending reads as stopped, not completed",
+  { timeout: 15000 },
+  async (t) => {
+    // The pr-review example's pattern: after a normal reply, the extension awaits and then
+    // continues the run. pi writes no aborted reply when the user stops during that await.
+    const beforeSettle = gate();
+    const continueRun = gate();
+    let requests = 0;
+    const h = await fixture(
+      t,
+      (model) => {
+        requests += 1;
+        return response(model, "Review in progress");
+      },
+      (pi) => {
+        pi.on("agent_before_settle", async () => {
+          beforeSettle.release();
+          await continueRun.promise;
+          return {
+            entries: [
+              {
+                type: "custom_message",
+                customType: "lifecycle-test",
+                content: "Keep reviewing",
+                display: false,
+              },
+            ],
+            continue: true,
+          };
+        });
+      },
+    );
+    const sending = h.driver.sendUserMessage(h.ref, { text: "Review the PR" });
+    await beforeSettle.promise;
+    const stopping = h.driver.cancelCurrentRun(h.ref);
+    continueRun.release();
+    await Promise.all([sending, stopping]);
+    await h.until(() => h.rawEvents.some((event) => event.type === "agent_settled"));
+    assert.equal(requests, 1, "the stopped run is not continued");
+    const replies = h.runtime.session.messages.filter((message) => message.role === "assistant");
+    assert.deepEqual(
+      replies.map((message) => message.stopReason),
+      ["stop"],
+      "pi adds no aborted reply, so the stop is only known to the driver",
+    );
+    const snapshot = await h.driver.openSession(h.ref);
+    assert.equal(snapshot.status, "idle");
+    assert.equal(snapshot.lastRunOutcome, "stopped");
+    await assert.rejects(
+      h.driver.archiveSessionIfIdle(h.ref, { lastRunOutcome: "completed" }),
+      /last run changed/,
+    );
+    assert.equal((await h.driver.openSession(h.ref)).archivedAt, undefined);
+  },
+);

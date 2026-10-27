@@ -4,6 +4,7 @@ import {
   buildSnapshot,
   determineRunOutcome,
   lastRunOutcome,
+  sessionRunOutcome,
   messageText,
   persistedToolOutput,
   shouldPersistSnapshotForAgentEvent,
@@ -184,4 +185,18 @@ await test("a session stopped after partial text snapshots as stopped, not compl
     "stopped",
   );
   assert.equal(buildSnapshot(source).lastRunOutcome, undefined);
+});
+
+await test("a run pi reports as aborted reads as stopped even when its last reply ended normally", () => {
+  const replied = [
+    { role: "user", content: "review" },
+    { role: "assistant", stopReason: "stop", content: "Review in progress" },
+    { role: "custom", content: "Keep reviewing" },
+  ];
+  assert.equal(sessionRunOutcome(replied, false), "completed");
+  assert.equal(sessionRunOutcome(replied, true), "stopped");
+  assert.equal(
+    sessionRunOutcome([...replied, { role: "assistant", stopReason: "error" }], true),
+    "failed",
+  );
 });

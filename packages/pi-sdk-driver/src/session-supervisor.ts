@@ -111,7 +111,7 @@ import {
   transcriptItemFromPinEntry,
   customMessageTranscriptItem,
   isHiddenCustomMessage,
-  lastRunOutcome,
+  sessionRunOutcome,
   truncate,
   workspaceToRef,
   type RunOutcome,
@@ -221,6 +221,8 @@ interface ManagedSessionRecord {
    */
   abortOnRunStart: boolean;
   pendingRunOutcome: RunOutcome | undefined;
+  /** pi's agent_settled `aborted` for the last run; cleared when the next run starts. */
+  lastRunAborted: boolean;
   queuedMessages: SessionQueuedMessage[];
   /** Taken off the queue to start a turn; shown in the transcript when pi starts it. */
   startingQueuedMessage: SessionQueuedMessage | undefined;
@@ -995,7 +997,7 @@ export class SessionSupervisor {
     // The caller judged the work from facts it saw earlier; refuse if they changed since.
     if (
       expect.lastRunOutcome !== undefined &&
-      lastRunOutcome(session.messages) !== expect.lastRunOutcome
+      sessionRunOutcome(session.messages, record.lastRunAborted) !== expect.lastRunOutcome
     ) {
       throw new Error("The thread's last run changed since it was checked; it was not archived.");
     }
@@ -1778,6 +1780,7 @@ export class SessionSupervisor {
       promptStarting: false,
       abortOnRunStart: false,
       pendingRunOutcome: undefined,
+      lastRunAborted: false,
       queuedMessages: [],
       startingQueuedMessage: undefined,
       queuedStartScheduled: false,
@@ -2684,6 +2687,7 @@ export class SessionSupervisor {
         }
         record.runningRunId ??= crypto.randomUUID();
         record.pendingRunOutcome = undefined;
+        record.lastRunAborted = false;
         record.status = "running";
         return [sessionUpdatedEvent(record)];
       case "turn_start":
@@ -2832,6 +2836,7 @@ export class SessionSupervisor {
           : record.pendingRunOutcome;
         record.pendingRunOutcome = undefined;
         record.cancellationRequested = false;
+        record.lastRunAborted = event.aborted;
         const runId = record.runningRunId;
         record.runningRunId = undefined;
         record.status = outcome?.status === "failed" ? "failed" : "idle";
